@@ -180,7 +180,7 @@ ESLint（vue3-recommended）0 error、`vue-tsc` 类型检查、Vitest 覆盖率 
 
 ### 6.3 打回循环
 
-任何一门不过 → 附 JSON 失败详情打回 → fix agent 修复 → 重跑 → 最多 2 轮无进展则任务标记失败并附诊断（交互式同规则）。阈值集中在 `templates/quality-gate.yaml` 可配置。
+任何一门不过 → 附 JSON 失败详情打回 → fix agent 修复 → 重跑 → 最多 2 轮无进展则任务标记失败并附诊断（交互式同规则）。阈值集中在 `templates/config/quality-gate.yaml` 可配置。
 
 ## 7. 测试工具链
 
