@@ -14,6 +14,7 @@ const TASKS_SCHEMA = {
   required: ['feature', 'tasks'],
   properties: {
     feature: { type: 'string' },
+    error: { type: 'string' },
     tasks: {
       type: 'array',
       items: {
@@ -38,11 +39,13 @@ const GATE_SCHEMA = {
 
 // ---- Phase 1: 任务读取 ----
 phase('任务读取')
+const featureArg = args && args.feature ? args.feature : '未指定'
 const taskDoc = await agent(
-  '读取 docs/plans/ 下目标 feature 的 tasks.md（args 指定 feature 名；未指定则列出 docs/plans/ 下所有 feature 让用户选择最近一个）。解析其 YAML frontmatter，返回 feature 名与 tasks 数组。若文件缺失或 frontmatter 缺 tasks 字段，返回 error 字段说明缺失的路径与字段，不得编造任务。',
+  `读取 docs/plans/ 下目标 feature 的 tasks.md。用户指定的 feature 名：${featureArg}；若为 未指定 则列出 docs/plans/ 下所有 feature 让用户选择最近一个。解析其 YAML frontmatter，返回 feature 名与 tasks 数组。若文件缺失或 frontmatter 缺 tasks 字段，必须返回 {feature:'', tasks:[], error:'<缺失的路径与字段>'} 形态（error 写具体缺失路径与字段），不得编造任务。`,
   { label: 'read-tasks', schema: TASKS_SCHEMA },
 )
 if (!taskDoc || !taskDoc.tasks || !taskDoc.tasks.length) {
+  // 错误形态 {feature:'', tasks:[], error:...} 满足 schema（error 未入 required，tasks 可为空数组），此分支原样透出具体缺失路径与字段
   return { result: 'no-tasks', error: taskDoc && taskDoc.error ? taskDoc.error : 'tasks.md 无任务或不可解析' }
 }
 const taskCount = taskDoc.tasks.length
