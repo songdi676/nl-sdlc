@@ -1422,11 +1422,12 @@ export const meta = {
 // ---- 输出 schema ----
 const STRUCTURED_REQ_SCHEMA = {
   type: 'object',
-  required: ['feature', 'user_stories', 'acceptance_criteria', 'open_questions'],
+  required: ['feature', 'user_stories', 'acceptance_criteria', 'nfr', 'open_questions'],
   properties: {
     feature: { type: 'string' },
     user_stories: { type: 'array', items: { type: 'string' } },
     acceptance_criteria: { type: 'array', items: { type: 'string' } },
+    nfr: { type: 'array', items: { type: 'string' } },
     open_questions: { type: 'array', items: { type: 'string' } },
   },
 }
@@ -1636,7 +1637,7 @@ phase('质量门')
 const MAX_FIX_ROUNDS = 2
 for (const r of results) {
   let gate = await agent(
-    `运行 bash scripts/quality-gate.sh --scope all，把 stdout 的 JSON 报告原样返回（含 overall）。`,
+    `运行 bash scripts/quality-gate.sh --scope all，把 stdout 的 JSON 报告原样返回（含 overall）。（workflow 判定一律全量 --scope all；编码期自检可用 --scope 单侧，两者不矛盾。）`,
     { label: 'gate-' + r.task, schema: GATE_SCHEMA },
   )
   let rounds = 0
@@ -1646,7 +1647,7 @@ for (const r of results) {
       { label: 'fix-' + r.task + '-r' + (rounds + 1) },
     )
     gate = await agent(
-      `重新运行 bash scripts/quality-gate.sh --scope all，返回 JSON 报告（含 overall）。`,
+      `重新运行 bash scripts/quality-gate.sh --scope all，返回 JSON 报告（含 overall）。（workflow 判定一律全量 --scope all。）`,
       { label: 'gate-' + r.task + '-r' + (rounds + 1), schema: GATE_SCHEMA },
     )
     rounds++
