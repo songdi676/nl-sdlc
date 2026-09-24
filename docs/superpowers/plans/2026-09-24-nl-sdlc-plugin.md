@@ -906,12 +906,13 @@ git commit -m "feat: 薄壳斜杠命令（code/review/ship）"
 #!/bin/bash
 set -u
 cd "$(dirname "$0")/.."
+QG="$(pwd)/scripts/quality-gate.sh"
 PASS=0; FAIL=0
 
-check() { # $1=描述 $2=期望(0/1/2) $3=stub 目录 $4...=参数
-  local desc="$1" want="$2" stub="$3"; shift 3
+check() { # $1=描述 $2=期望(0/1/2) $3=stub 目录 $4=fixture 目录 $5...=参数（在 fixture 目录内运行）
+  local desc="$1" want="$2" stub="$3" dir="$4"; shift 4
   local out
-  out=$(bash scripts/quality-gate.sh --stub-dir "$stub" "$@" 2>/dev/null)
+  out=$(cd "$dir" && bash "$QG" --stub-dir "$stub" "$@" 2>/dev/null)
   local got=$?
   if [ "$got" -eq "$want" ]; then PASS=$((PASS+1)); echo "ok - $desc"
   else FAIL=$((FAIL+1)); echo "FAIL - $desc (want exit $want, got $got; out: $out)"; fi
@@ -925,28 +926,28 @@ chmod +x "$S_ALL/mvn" "$S_ALL/dependency-check"
 
 # stub: checkstyle 失败
 S_CS=$(mktemp -d)
-printf '#!/bin/bash\nexit 0\n' > "$S_CS/mvn"
-chmod +x "$S_CS/mvn"
-
-# stub: 命令不存在（模拟环境错误）
-S_EMPTY=$(mktemp -d)
-
-mkdir -p target-stub-projects/backend && touch target-stub-projects/backend/pom.xml
-
-# 测试 1：Maven 项目全工具通过 → exit 0 且 JSON overall=pass
-check "maven 全绿" 0 "$S_ALL" --scope backend
-
-# 测试 2：checkstyle 失败 → exit 1 且 JSON overall=fail
 printf '#!/bin/bash\nif [ "$1" = "checkstyle:check" ]; then echo "checkstyle violation" >&2; exit 1; fi\nexit 0\n' > "$S_CS/mvn"
 chmod +x "$S_CS/mvn"
-out=$(bash scripts/quality-gate.sh --stub-dir "$S_CS" --scope backend 2>/dev/null)
+
+# stub: 空（无任何工具）
+S_EMPTY=$(mktemp -d)
+
+# fixture 目录
+mkdir -p target-stub-projects/backend/target/site/jacoco
+touch target-stub-projects/backend/pom.xml
+printf 'a,Example,0,0,0,0,20,80\n' > target-stub-projects/backend/target/site/jacoco/jacoco.csv
+mkdir -p target-stub-projects/not-a-project
+
+# 测试 1：Maven 项目全工具通过 → exit 0 且 JSON overall=pass
+check "maven 全绿" 0 "$S_ALL" target-stub-projects/backend --scope backend
+
+# 测试 2：checkstyle 失败 → exit 1 且 JSON overall=fail
+out=$(cd target-stub-projects/backend && bash "$QG" --stub-dir "$S_CS" --scope backend 2>/dev/null)
 if [ $? -eq 1 ] && echo "$out" | grep -q '"overall": *"fail"'; then PASS=$((PASS+1)); echo "ok - checkstyle 失败返回 fail"
 else FAIL=$((FAIL+1)); echo "FAIL - checkstyle 失败应 exit 1 + overall=fail (out: $out)"; fi
 
 # 测试 3：不在 Maven/Vue 项目内 → exit 2 且无崩溃
-out=$(bash scripts/quality-gate.sh --stub-dir "$S_EMPTY" --scope all 2>/dev/null)
-if [ $? -eq 2 ] && echo "$out" | grep -q '"project_type": *"none"'; then PASS=$((PASS+1)); echo "ok - 非项目目录 exit 2"
-else FAIL=$((FAIL+1)); echo "FAIL - 非项目目录应 exit 2 + project_type=none (out: $out)"; fi
+check "非项目目录" 2 "$S_EMPTY" target-stub-projects/not-a-project --scope all
 
 rm -rf "$S_ALL" "$S_CS" "$S_EMPTY"
 echo "$PASS passed, $FAIL failed"
@@ -1015,8 +1016,9 @@ run_backend() {
     sb_status=fail
   fi
   # jacoco 行覆盖：从 target/site/jacoco/jacoco.csv 解析（缺文件按失败处理）
+  # 列语义：$1=GROUP $2=CLASS $7=LINE_MISSED $8=LINE_COVERED
   if [ -f target/site/jacoco/jacoco.csv ]; then
-    cov_line=$(awk -F',' 'NR>1 { ic+=$8; im+=$9 } END { if (im>0) printf "%.1f", 100*im/(ic+im); else print 0 }' target/site/jacoco/jacoco.csv)
+    cov_line=$(awk -F',' 'NR>1 { im+=$7; ic+=$8 } END { if (ic+im>0) printf "%.1f", 100*ic/(ic+im); else print 0 }' target/site/jacoco/jacoco.csv)
     if ! awk -v l="$cov_line" -v t="$cov_threshold" 'BEGIN { exit !(l >= t) }'; then cov_status=fail; fi
   else
     cov_status=fail
@@ -1064,15 +1066,9 @@ echo "$REPORT" | grep -q '"overall":"fail"' && emit "$REPORT" 1 || emit "$REPORT
 - [ ] **Step 4: 运行测试确认通过**
 
 Run: `bash scripts/quality-gate-test.sh`
-Expected: `3 passed, 0 failed`（测试 2 的 stub 覆盖了 checkstyle 失败路径；jacoco 缺文件按失败处理符合测试 1？——注意：测试 1 的 stub `mvn` 全 exit 0，但 jacoco.csv 不存在会 cov_status=fail。为让测试 1 通过，Step 3 实现中 jacoco 逻辑在 `target/site/jacoco/jacoco.csv` 缺失时需判 fail——这会破坏测试 1。修正：测试 1 的 fixture 需预置 jacoco.csv。请同步修改测试脚本测试 1 前加入：
-`mkdir -p target-stub-projects/backend/target/site/jacoco && echo "GROUP,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED" > target-stub-projects/backend/target/site/jacoco/jacoco.csv && echo "a,Example,20,80" >> target-stub-projects/backend/target/site/jacoco/jacoco.csv`）
+Expected: `3 passed, 0 failed`（fixture 的 jacoco.csv 为 8 列 `a,Example,0,0,0,0,20,80`，覆盖 80% 达标；checkstyle stub 按参数分流；非项目目录走 exit 2）。
 
-- [ ] **Step 5: 修正测试脚本并复跑**（按 Step 4 说明补 jacoco.csv fixture 后）
-
-Run: `bash scripts/quality-gate-test.sh`
-Expected: `3 passed, 0 failed`。
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add scripts/quality-gate.sh scripts/quality-gate-test.sh
@@ -1100,26 +1096,31 @@ S_NPM_OK=$(mktemp -d)
 printf '#!/bin/bash\nexit 0\n' > "$S_NPM_OK/npm"
 printf '#!/bin/bash\nexit 0\n' > "$S_NPM_OK/vue-tsc"
 chmod +x "$S_NPM_OK/npm" "$S_NPM_OK/vue-tsc"
-mkdir -p target-stub-projects/frontend && touch target-stub-projects/frontend/package.json
+mkdir -p target-stub-projects/frontend/coverage
+touch target-stub-projects/frontend/package.json
+echo '{"total":{"lines":{"pct":75}}}' > target-stub-projects/frontend/coverage/coverage-summary.json
 
 # 测试 4：Vue 全绿 → exit 0 overall=pass
-out=$(bash scripts/quality-gate.sh --stub-dir "$S_NPM_OK" --scope frontend 2>/dev/null)
-if [ $? -eq 0 ] && echo "$out" | grep -q '"overall":"pass"'; then PASS=$((PASS+1)); echo "ok - vue 全绿"
-else FAIL=$((FAIL+1)); echo "FAIL - vue 全绿应 pass (out: $out)"; fi
+( cd target-stub-projects/frontend && out=$(bash "$QG" --stub-dir "$S_NPM_OK" --scope frontend 2>/dev/null); code=$?
+  if [ "$code" -eq 0 ] && echo "$out" | grep -q '"overall":"pass"'; then echo "ok - vue 全绿"; exit 0
+  else echo "FAIL - vue 全绿应 pass (out: $out)"; exit 1; fi )
+if [ $? -eq 0 ]; then PASS=$((PASS+1)); else FAIL=$((FAIL+1)); fi
 
 # 测试 5：npm audit 高危 → exit 1 overall=fail
 S_NPM_BAD=$(mktemp -d)
 printf '#!/bin/bash\nif [ "$1" = "audit" ]; then exit 1; fi\nexit 0\n' > "$S_NPM_BAD/npm"
 printf '#!/bin/bash\nexit 0\n' > "$S_NPM_BAD/vue-tsc"
 chmod +x "$S_NPM_BAD/npm" "$S_NPM_BAD/vue-tsc"
-out=$(bash scripts/quality-gate.sh --stub-dir "$S_NPM_BAD" --scope frontend 2>/dev/null)
-if [ $? -eq 1 ] && echo "$out" | grep -q '"overall":"fail"'; then PASS=$((PASS+1)); echo "ok - npm audit 高危 fail"
-else FAIL=$((FAIL+1)); echo "FAIL - npm audit 高危应 fail (out: $out)"; fi
+( cd target-stub-projects/frontend && out=$(bash "$QG" --stub-dir "$S_NPM_BAD" --scope frontend 2>/dev/null); code=$?
+  if [ "$code" -eq 1 ] && echo "$out" | grep -q '"overall":"fail"'; then echo "ok - npm audit 高危 fail"; exit 0
+  else echo "FAIL - npm audit 高危应 fail (out: $out)"; exit 1; fi )
+if [ $? -eq 0 ]; then PASS=$((PASS+1)); else FAIL=$((FAIL+1)); fi
 
-# 测试 6：阈值文件缺失 → 回退默认值并带 warning（exit 0 全绿场景）
-out=$(bash scripts/quality-gate.sh --stub-dir "$S_NPM_OK" --scope frontend --thresholds /nonexistent/qg.yaml 2>/dev/null)
-if [ $? -eq 0 ] && echo "$out" | grep -q '"warnings"'; then PASS=$((PASS+1)); echo "ok - 缺失阈值文件回退默认值"
-else FAIL=$((FAIL+1)); echo "FAIL - 缺失阈值文件应回退默认并带 warning (out: $out)"; fi
+# 测试 6：阈值文件缺失 → 回退默认值并在 warnings 中注明（exit 0 全绿场景）
+( cd target-stub-projects/frontend && out=$(bash "$QG" --stub-dir "$S_NPM_OK" --scope frontend --thresholds /nonexistent/qg.yaml 2>/dev/null); code=$?
+  if [ "$code" -eq 0 ] && echo "$out" | grep -q '阈值文件缺失'; then echo "ok - 缺失阈值文件回退默认值"; exit 0
+  else echo "FAIL - 缺失阈值文件应回退默认并在 warnings 注明 (out: $out)"; exit 1; fi )
+if [ $? -eq 0 ]; then PASS=$((PASS+1)); else FAIL=$((FAIL+1)); fi
 
 # 测试 7：前后端同仓（both）--scope all → 后端失败则 overall=fail 且含 backend/frontend 子报告
 S_BOTH=$(mktemp -d)
@@ -1128,11 +1129,11 @@ printf '#!/bin/bash\nexit 0\n' > "$S_BOTH/vue-tsc"
 printf '#!/bin/bash\nexit 1\n' > "$S_BOTH/mvn"   # 后端必失败
 chmod +x "$S_BOTH/npm" "$S_BOTH/vue-tsc" "$S_BOTH/mvn"
 mkdir -p target-stub-projects/both/target/site/jacoco
-printf 'a,Example,20,80\n' > target-stub-projects/both/target/site/jacoco/jacoco.csv
+printf 'a,Example,0,0,0,0,20,80\n' > target-stub-projects/both/target/site/jacoco/jacoco.csv
 mkdir -p target-stub-projects/both/coverage
 echo '{"total":{"lines":{"pct":75}}}' > target-stub-projects/both/coverage/coverage-summary.json
 touch target-stub-projects/both/pom.xml target-stub-projects/both/package.json
-( cd target-stub-projects/both && out=$(bash ../../scripts/quality-gate.sh --stub-dir "$S_BOTH" --scope all 2>/dev/null); code=$?
+( cd target-stub-projects/both && out=$(bash "$QG" --stub-dir "$S_BOTH" --scope all 2>/dev/null); code=$?
   if [ "$code" -eq 1 ] && echo "$out" | grep -q '"overall":"fail"' && echo "$out" | grep -q '"backend"' && echo "$out" | grep -q '"frontend"'; then echo "ok - both 合并失败"; exit 0
   else echo "FAIL - both 合并应 fail 且含子报告 (out: $out)"; exit 1; fi )
 if [ $? -eq 0 ]; then PASS=$((PASS+1)); else FAIL=$((FAIL+1)); fi
@@ -1148,14 +1149,17 @@ Expected: 测试 4/5/6 FAIL（frontend 门还是占位 skipped 实现）。
 - [ ] **Step 3: 实现 Vue 门与阈值加载（修改 run_frontend 与新增 load_thresholds）**
 
 ```bash
-# 在脚本头部新增：
+# 在脚本头部（REPORT 定义之前）新增全局变量与函数：
+EXTRA_WARNINGS=""   # load_thresholds 填充，run_backend/run_frontend 注入其 warnings
+
 load_thresholds() {
-  # 读取 YAML 里形如 "  line: 80" 的行；文件缺失/解析失败 → 内置默认值 + warning
+  # 读取 YAML 里形如 "backend_coverage: 80" 的行；文件缺失 → 内置默认值 + EXTRA_WARNINGS
   local file="$1"
   COV_BACKEND=80; COV_FRONTEND=70
+  EXTRA_WARNINGS=""
   if [ -z "$file" ]; then return; fi
   if [ ! -f "$file" ]; then
-    REPORT_WARNINGS=$(printf '%s' "$REPORT_WARNINGS" | sed 's/^"warnings":\[/"warnings":["阈值文件缺失，使用默认值(Java 80/Vue 70)",/')
+    EXTRA_WARNINGS='"阈值文件缺失，使用默认值(Java 80/Vue 70)"'
     return
   fi
   local b f
@@ -1164,6 +1168,10 @@ load_thresholds() {
   [ -n "$b" ] && COV_BACKEND="$b"
   [ -n "$f" ] && COV_FRONTEND="$f"
 }
+
+# 并把 run_backend（Task 11 版）与 run_frontend 中硬编码的 "warnings":[] 替换为动态值：
+#   printf ... '"warnings":[%s]' ... "${EXTRA_WARNINGS:-[]}"
+# 即 run_backend 结尾 printf 的 "warnings":[] 改为 "warnings":[%s] 并追加参数 ${EXTRA_WARNINGS:-[]}；run_frontend 同理。
 
 # run_frontend 替换为：
 run_frontend() {
@@ -1204,12 +1212,7 @@ run_frontend() {
       REPORT=$(printf '{"overall":"%s","scope":"all","project_type":"both","warnings":[],"backend":%s,"frontend":%s}' "$OV" "$B" "$F")
 ```
 
-并在脚本最前（while 参数解析后）调用 `load_thresholds "$THRESHOLDS_FILE"`。测试 4 的 Vue fixture 需补 `coverage/coverage-summary.json`（`{"total":{"lines":{"pct":75}}}`），测试 5 同样——在测试脚本相应位置加入：
-
-```bash
-mkdir -p target-stub-projects/frontend/coverage
-echo '{"total":{"lines":{"pct":75}}}' > target-stub-projects/frontend/coverage/coverage-summary.json
-```
+并在脚本最前（while 参数解析后）调用 `load_thresholds "$THRESHOLDS_FILE"`（须在 run_backend/run_frontend 调用之前）。测试 4/5/6 的 Vue fixture（coverage/coverage-summary.json 等）已在测试脚本中预置。
 
 - [ ] **Step 4: 运行测试确认全部通过**
 
@@ -1909,7 +1912,7 @@ else FAIL=$((FAIL+1)); echo "FAIL - teammate-idle 应放行 (exit $code)"; fi
 
 # teammate-idle：伪造全绿 Maven 项目 → exit 0
 S=$(mktemp -d); mkdir -p "$S/sub" && touch "$S/sub/pom.xml"
-mkdir -p "$S/sub/target/site/jacoco" && printf 'a,Example,20,80\n' > "$S/sub/target/site/jacoco/jacoco.csv"
+mkdir -p "$S/sub/target/site/jacoco" && printf 'a,Example,0,0,0,0,20,80\n' > "$S/sub/target/site/jacoco/jacoco.csv"
 printf '#!/bin/bash\nexit 0\n' > "$S/mvn" && chmod +x "$S/mvn"
 ( cd "$S/sub" && PATH="$S:$PATH" bash "$PLUGIN_ROOT/hooks/teammate-idle.sh" >/dev/null 2>&1 ); code=$?
 if [ "$code" -eq 0 ]; then PASS=$((PASS+1)); echo "ok - teammate-idle 全绿放行"
