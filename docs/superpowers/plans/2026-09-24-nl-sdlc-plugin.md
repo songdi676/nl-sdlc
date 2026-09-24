@@ -1822,25 +1822,25 @@ git commit -m "feat: testing workflow（Newman+Playwright 执行、诊断与修�
   "hooks": {
     "SessionStart": [
       {
-        "matcher": "startup|resume|clear|compact",
-        "hooks": [{ "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/session-start.sh" }]
+        "matcher": "startup|resume|clear|compact|fork",
+        "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/session-start.sh\"" }]
       }
     ],
     "TeammateIdle": [
       {
-        "matcher": "*",
-        "hooks": [{ "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/teammate-idle.sh" }]
+        "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/teammate-idle.sh\"", "timeout": 900 }]
       }
     ],
     "TaskCompleted": [
       {
-        "matcher": "*",
-        "hooks": [{ "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/task-completed.sh" }]
+        "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/task-completed.sh\"" }]
       }
     ]
   }
 }
 ```
+
+注：command 必须给 `${CLAUDE_PLUGIN_ROOT}` 占位符加引号（官方 --strict 校验强制，未加引号报 3 条 warning）；TeammateIdle 加 `timeout: 900`（默认 600s 超时静默 fail-open，冷仓 Maven 门 + npm audit 易超时）；SessionStart matcher 含 `fork`；TeammateIdle/TaskCompleted 不支持 matcher，不写。
 
 - [ ] **Step 2: 写 session-start.sh（引导注入，参考 superpowers 模式）**
 
@@ -1866,6 +1866,12 @@ exit 0
 QG="$(dirname "$0")/../scripts/quality-gate.sh"
 if [ ! -f "$QG" ]; then
   echo '{"result":"skip","reason":"quality-gate.sh 缺失"}' >&2
+  exit 0
+fi
+# 插件自身仓库（有插件清单但无业务项目特征）：跳过质量门，避免对插件自身 package.json
+# 误跑 Vue 门（无 lint script 恒失败）导致死循环打回
+if [ -f .claude-plugin/plugin.json ] && [ ! -f pom.xml ]; then
+  echo "quality gate skip: nl-sdlc 插件自身仓库" >&2
   exit 0
 fi
 OUT=$(bash "$QG" --scope all 2>/dev/null)
