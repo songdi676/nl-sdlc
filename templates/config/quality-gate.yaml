@@ -1,0 +1,3 @@
+# nl-sdlc 质量门阈值（复制到项目根或用 --thresholds 指定）
+backend_coverage: 80   # jacoco 行覆盖率下限（%）
+frontend_coverage: 70  # vitest 行覆盖率下限（%）
