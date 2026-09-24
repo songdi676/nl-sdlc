@@ -35,7 +35,7 @@ spec 未显式规定、但最容易咬人的五类输入（每条对应任务的
 2. **仓库同时含 pom.xml 与 package.json（前后端同仓）** → quality-gate.sh 默认两者都查，`--scope` 可限定单侧（测试在 Task 12）
 3. **Newman/Playwright 未安装** → run-tests.sh 输出说明性 JSON 并以 exit 0 警告退出，不崩溃（测试在 Task 13）
 4. **阈值配置文件缺失或含非法值** → quality-gate.sh 回退内置默认值并在报告加 warning 字段（测试在 Task 12）
-5. **质疑投票 agent 调用失败（返回 null）** → 该票重试一次，仍失败记弃权；有效票 ≥2 时按有效票的 2/3 计；有效票 <2 本轮转人工（测试在 Task 14）
+5. **质疑投票 agent 调用失败（返回 null）** → 该票记弃权（tallyVotes 按有效票的 2/3 计）；有效票 <2 该轮 deadlock，继续修订循环；3 轮封顶仍不通过（含死锁轮）→ 分歧报告转人工（tallyVotes 纯函数单测在 Task 14）
 
 ---
 
