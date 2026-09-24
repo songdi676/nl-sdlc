@@ -1,0 +1,1 @@
+{ "name": "nl-sdlc", "private": true, "type": "module", "scripts": { "test": "node --test scripts/validate-plugin-test.mjs" } }
