@@ -71,6 +71,18 @@ if [ $? -eq 0 ]; then PASS=$((PASS+1)); else FAIL=$((FAIL+1)); fi
   else echo "FAIL - 缺失阈值文件应回退默认并在 warnings 注明 (out: $out)"; exit 1; fi )
 if [ $? -eq 0 ]; then PASS=$((PASS+1)); else FAIL=$((FAIL+1)); fi
 
+# 测试 11：PATH 无 vue-tsc 但 stub npx 可用（本地 devDependency 形态）→ npx 回退生效，全绿 overall=pass
+S_NPX=$(mktemp -d)
+printf '#!/bin/bash\nexit 0\n' > "$S_NPX/npm"
+printf '#!/bin/bash\nexit 0\n' > "$S_NPX/npx"
+chmod +x "$S_NPX/npm" "$S_NPX/npx"
+NODE_DIR=$(dirname "$(command -v node)")
+( cd target-stub-projects/frontend && out=$(PATH="$S_NPX:$NODE_DIR:/usr/bin:/bin" bash "$QG" --stub-dir "$S_NPX" --scope frontend 2>/dev/null); code=$?
+  if [ "$code" -eq 0 ] && echo "$out" | grep -q '"overall":"pass"' && echo "$out" | grep -q '"vue-tsc","status":"pass"'; then echo "ok - vue-tsc npx 回退"; exit 0
+  else echo "FAIL - PATH 无 vue-tsc 时 npx 回退应 pass (out: $out)"; exit 1; fi )
+if [ $? -eq 0 ]; then PASS=$((PASS+1)); else FAIL=$((FAIL+1)); fi
+rm -rf "$S_NPX"
+
 # 测试 7：前后端同仓（both）--scope all → 后端失败则 overall=fail 且含 backend/frontend 子报告
 S_BOTH=$(mktemp -d)
 printf '#!/bin/bash\nexit 0\n' > "$S_BOTH/npm"

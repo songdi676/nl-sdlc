@@ -109,13 +109,32 @@ run_backend() {
 # ---- Vue 门 ----
 run_frontend() {
   local NPM; NPM=$(resolve npm)
-  local VTS; VTS=$(resolve vue-tsc)
   if [ -z "$NPM" ]; then emit '{"overall":"fail","scope":"frontend","project_type":"vue","warnings":["npm 未安装"],"checks":[],"coverage":null}' 2; fi
 
-  local lint_status=pass tsc_status=pass audit_status=pass cov_status=pass cov_threshold=${COV_FRONTEND:-70}
+  # vue-tsc 解析：stub/PATH → npx 本地依赖回退（Vite+Vue 项目 vue-tsc 通常为本地 devDependency）。
+  # 两者都不可用 → tsc 门记 fail（不得报 pass——与 mvn/npm 缺失口径一致，选 fail 而非 exit 2
+  # 以保持单侧报告结构，checks 中明确给出"vue-tsc 不可用"详情）
+  local VTS="" VTS_NPX="" NPX_BIN=""
+  VTS=$(resolve vue-tsc)
+  if [ -z "$VTS" ]; then
+    if [ -n "$STUB_DIR" ] && [ -x "$STUB_DIR/npx" ]; then NPX_BIN="$STUB_DIR/npx"
+    else NPX_BIN=$(command -v npx 2>/dev/null) || true; fi
+    if [ -n "$NPX_BIN" ] && "$NPX_BIN" --no-install vue-tsc --version >/dev/null 2>&1; then
+      VTS="vue-tsc"; VTS_NPX="$NPX_BIN"
+    fi
+  fi
+
+  local lint_status=pass tsc_status=pass tsc_detail="类型检查" audit_status=pass cov_status=pass cov_threshold=${COV_FRONTEND:-70}
   local cov_line=0
+  if [ -z "$VTS" ]; then tsc_status=fail; tsc_detail="vue-tsc 不可用"; fi
   if ! "$NPM" run lint >/dev/null 2>&1; then lint_status=fail; fi
-  if [ -n "$VTS" ] && ! "$VTS" --noEmit >/dev/null 2>&1; then tsc_status=fail; fi
+  if [ -n "$VTS" ]; then
+    if [ -n "$VTS_NPX" ]; then
+      "$VTS_NPX" --no-install vue-tsc --noEmit >/dev/null 2>&1 || tsc_status=fail
+    else
+      "$VTS" --noEmit >/dev/null 2>&1 || tsc_status=fail
+    fi
+  fi
   if ! "$NPM" audit --audit-level=high >/dev/null 2>&1; then audit_status=fail; fi
   # Vitest 覆盖率：从 coverage/coverage-summary.json 读取 lines.pct
   if [ -f coverage/coverage-summary.json ]; then
@@ -128,8 +147,8 @@ run_frontend() {
   local overall=pass
   [ "$lint_status" = fail ] || [ "$tsc_status" = fail ] || [ "$audit_status" = fail ] || [ "$cov_status" = fail ] && overall=fail
 
-  printf '{"overall":"%s","scope":"frontend","project_type":"vue","warnings":[%s],"checks":[{"name":"eslint","status":"%s","details":"0 error","suggestions":[]},{"name":"vue-tsc","status":"%s","details":"类型检查","suggestions":[]},{"name":"npm-audit","status":"%s","details":"无高危","suggestions":[]}],"coverage":{"line":%s,"threshold":%s,"status":"%s"}}' \
-    "$overall" "${EXTRA_WARNINGS:-}" "$lint_status" "$tsc_status" "$audit_status" "$cov_line" "$cov_threshold" "$cov_status"
+  printf '{"overall":"%s","scope":"frontend","project_type":"vue","warnings":[%s],"checks":[{"name":"eslint","status":"%s","details":"0 error","suggestions":[]},{"name":"vue-tsc","status":"%s","details":"%s","suggestions":[]},{"name":"npm-audit","status":"%s","details":"无高危","suggestions":[]}],"coverage":{"line":%s,"threshold":%s,"status":"%s"}}' \
+    "$overall" "${EXTRA_WARNINGS:-}" "$lint_status" "$tsc_status" "$(json_escape "$tsc_detail")" "$audit_status" "$cov_line" "$cov_threshold" "$cov_status"
 }
 
 case "$SCOPE" in
