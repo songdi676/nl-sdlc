@@ -48,6 +48,10 @@ const e2eResult = await agent(
 // ---- Phase 3: 失败修复循环（≤2 轮）----
 phase('修复循环')
 const fixes = []
+// 跟踪最后一轮 rerun 结果：修复成功后 return 的是 rerun 的 pass 对象，
+// 避免返回首轮陈旧 fail 对象导致消费方误判
+let lastApi = null
+let lastE2e = null
 if (apiResult && apiResult.overall === 'fail') {
   for (let round = 1; round <= 2; round++) {
     const fix = await agent(
@@ -59,7 +63,7 @@ if (apiResult && apiResult.overall === 'fail') {
       `重新运行 bash scripts/run-tests.sh --api${baseArg}，返回 JSON。`,
       { label: 'api-rerun-r' + round, schema: TEST_RESULT_SCHEMA },
     )
-    if (rerun && rerun.overall === 'pass') { fixes.push({ phase: 'api', round, rerun: 'pass' }); break }
+    if (rerun && rerun.overall === 'pass') { lastApi = rerun; fixes.push({ phase: 'api', round, rerun: 'pass' }); break }
     fixes.push({ phase: 'api', round, rerun: rerun ? rerun.overall : 'error' })
   }
 }
@@ -74,9 +78,9 @@ if (e2eResult && e2eResult.overall === 'fail') {
       `重新运行 bash scripts/run-tests.sh --e2e${baseArg}，返回 JSON。`,
       { label: 'e2e-rerun-r' + round, schema: TEST_RESULT_SCHEMA },
     )
-    if (rerun && rerun.overall === 'pass') { fixes.push({ phase: 'e2e', round, rerun: 'pass' }); break }
+    if (rerun && rerun.overall === 'pass') { lastE2e = rerun; fixes.push({ phase: 'e2e', round, rerun: 'pass' }); break }
     fixes.push({ phase: 'e2e', round, rerun: rerun ? rerun.overall : 'error' })
   }
 }
 
-return { result: 'done', api: apiResult, e2e: e2eResult, fixes }
+return { result: 'done', api: lastApi || apiResult, e2e: lastE2e || e2eResult, fixes }
