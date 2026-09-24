@@ -17,7 +17,7 @@
 - **资产语言**：所有 frontmatter 的 `name`/`description` 用英文（触发路由），正文与用户可见文案用中文
 - **skill 命名**：kebab-case，目录名 = name，SKILL.md 大写；description 第三人称 + "Use when" 开头、只写触发条件不写流程摘要，总长 < 1024 字符
 - **agent persona 禁止互调**：persona 只能被 workflow/命令/主 agent 调用；persona 正文结尾带 `## Composition` 块（何时直接调/经何命令调/禁止从其他 persona 调）
-- **质量门阈值**（默认值，`templates/quality-gate.yaml` 可覆盖）：Java：checkstyle 阿里 P3C 0 违规、spotbugs(含 FindSecBugs) 0 高危/中危、jacoco 行覆盖 ≥ 80%、Dependency-Check 无高危漏洞；Vue 3：ESLint 0 error、vue-tsc 通过、Vitest 覆盖率 ≥ 70%、npm audit 无高危
+- **质量门阈值**（默认值，`templates/config/quality-gate.yaml` 可覆盖）：Java：checkstyle 阿里 P3C 0 违规、spotbugs(含 FindSecBugs) 0 高危/中危、jacoco 行覆盖 ≥ 80%、Dependency-Check 无高危漏洞；Vue 3：ESLint 0 error、vue-tsc 通过、Vitest 覆盖率 ≥ 70%、npm audit 无高危
 - **打回循环**：质量门失败 → fix → 重跑，连续 2 轮无进展 → 任务失败 + 诊断
 - **3票质疑**：≥ 2/3 多数通过，最多 3 轮修订，3 轮不过输出分歧报告转人工
 - **CI 原则**：CI 直接跑脚本过硬关卡（不需 AI 密钥）；AI 只做可选诊断报告（默认关闭）；CI 不自动改代码
