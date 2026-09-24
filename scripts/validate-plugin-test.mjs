@@ -38,3 +38,14 @@ test('agent 缺 name 报错', () => {
   assert.throws(() => run([], dir), /x\.md.*name/);
   rmSync(dir, { recursive: true, force: true });
 });
+
+test('command 空 frontmatter 不崩溃，按规范格式报错', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nlp-'));
+  mkdirSync(join(dir, 'commands'), { recursive: true });
+  writeFileSync(join(dir, 'commands/no-fm.md'), '# 只有正文\n');
+  assert.throws(() => run([], dir), (e) => {
+    const msg = e.message;
+    return /no-fm\.md/.test(msg) && !/TypeError/.test(msg);
+  });
+  rmSync(dir, { recursive: true, force: true });
+});

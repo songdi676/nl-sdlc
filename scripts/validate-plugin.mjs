@@ -59,7 +59,7 @@ for (const f of agents) {
 for (const f of commands) {
   const fm = parseFrontmatter(readFileSync(f, 'utf8'));
   if (!fm || !fm.description) err(f, 1, '命令缺少 frontmatter description');
-  if (fm['disable-model-invocation'] !== 'true') err(f, 2, '薄壳命令必须设置 disable-model-invocation: true');
+  if (fm && fm['disable-model-invocation'] !== 'true') err(f, 2, '薄壳命令必须设置 disable-model-invocation: true');
 }
 
 for (const f of workflows) {
