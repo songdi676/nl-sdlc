@@ -17,6 +17,11 @@ if [ "$code" -eq 0 ]; then PASS=$((PASS+1)); echo "ok - teammate-idle 非项目�
 else FAIL=$((FAIL+1)); echo "FAIL - teammate-idle 应放行 (exit $code)"; fi
 rm -rf "$S_EMPTY"
 
+# teammate-idle：插件自身仓库（有 .claude-plugin/plugin.json 且无 pom.xml）→ exit 0 跳过
+( cd "$PLUGIN_ROOT" && bash "$PLUGIN_ROOT/hooks/teammate-idle.sh" >/dev/null 2>&1 ); code=$?
+if [ "$code" -eq 0 ]; then PASS=$((PASS+1)); echo "ok - teammate-idle 插件自身仓库跳过"
+else FAIL=$((FAIL+1)); echo "FAIL - teammate-idle 插件自身仓库应跳过 (exit $code)"; fi
+
 # teammate-idle：伪造全绿 Maven 项目 → exit 0
 S=$(mktemp -d); mkdir -p "$S/sub" && touch "$S/sub/pom.xml"
 mkdir -p "$S/sub/target/site/jacoco" && printf 'GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED,BRANCH_MISSED,LINE_MISSED,LINE_COVERED\na,Example,0,0,0,0,20,80\n' > "$S/sub/target/site/jacoco/jacoco.csv"

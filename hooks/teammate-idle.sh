@@ -5,6 +5,12 @@ if [ ! -f "$QG" ]; then
   echo '{"result":"skip","reason":"quality-gate.sh 缺失"}' >&2
   exit 0
 fi
+# 插件自身仓库（有插件清单但无业务项目特征）：跳过质量门，避免对插件自身 package.json
+# 误跑 Vue 门（无 lint script 恒失败）导致死循环打回
+if [ -f .claude-plugin/plugin.json ] && [ ! -f pom.xml ]; then
+  echo "quality gate skip: nl-sdlc 插件自身仓库" >&2
+  exit 0
+fi
 OUT=$(bash "$QG" --scope all 2>/dev/null)
 CODE=$?
 if [ "$CODE" -eq 2 ]; then
