@@ -144,12 +144,15 @@ case "$SCOPE" in
       10) capture run_backend ;;
       01) capture run_frontend ;;
       11) # 前后端同仓：两侧都跑，合并输出（见 Interfaces 的 both 形态）
-          B=$(run_backend)
-          F=$(run_frontend)
+          B=$(run_backend); B_RC=$?
+          F=$(run_frontend); F_RC=$?
           B_OK=$(echo "$B" | grep -q '"overall":"pass"' && echo 1 || echo 0)
           F_OK=$(echo "$F" | grep -q '"overall":"pass"' && echo 1 || echo 0)
           OV=fail; [ "$B_OK" = 1 ] && [ "$F_OK" = 1 ] && OV=pass
-          REPORT=$(printf '{"overall":"%s","scope":"all","project_type":"both","warnings":[],"backend":%s,"frontend":%s}' "$OV" "$B" "$F") ;;
+          REPORT=$(printf '{"overall":"%s","scope":"all","project_type":"both","warnings":[],"backend":%s,"frontend":%s}' "$OV" "$B" "$F")
+          # 子门环境/配置错误（内部 emit exit 2）在 $() 中被捕获为 JSON，此处按契约转发退出码 2；
+          # 与单侧路径 capture 的 rc 转发一致（emit 输出的 JSON 必为 overall=fail，故合并报告保持 overall=fail）
+          if [ "$B_RC" -eq 2 ] || [ "$F_RC" -eq 2 ]; then emit "$REPORT" 2; fi ;;
       00) emit "$REPORT" 2 ;;
     esac ;;
 esac

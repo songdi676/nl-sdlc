@@ -87,6 +87,17 @@ touch target-stub-projects/both/pom.xml target-stub-projects/both/package.json
   else echo "FAIL - both 合并应 fail 且含子报告 (out: $out)"; exit 1; fi )
 if [ $? -eq 0 ]; then PASS=$((PASS+1)); else FAIL=$((FAIL+1)); fi
 
+# 测试 10（回归）：both 项目后端工具缺失（stub 无 mvn + PATH 隔离）→ exit 2 且含 backend/frontend 子报告
+S_BOTH_NO_MVN=$(mktemp -d)
+printf '#!/bin/bash\nexit 0\n' > "$S_BOTH_NO_MVN/npm"
+printf '#!/bin/bash\nexit 0\n' > "$S_BOTH_NO_MVN/vue-tsc"
+chmod +x "$S_BOTH_NO_MVN/npm" "$S_BOTH_NO_MVN/vue-tsc"
+( cd target-stub-projects/both && out=$(PATH=/usr/bin:/bin bash "$QG" --stub-dir "$S_BOTH_NO_MVN" --scope all 2>/dev/null); code=$?
+  if [ "$code" -eq 2 ] && echo "$out" | grep -q '"backend"' && echo "$out" | grep -q '"frontend"' && echo "$out" | grep -q 'mvn 未安装'; then echo "ok - both 后端工具缺失 exit 2"; exit 0
+  else echo "FAIL - both 后端工具缺失应 exit 2 且含子报告 (out: $out)"; exit 1; fi )
+if [ $? -eq 0 ]; then PASS=$((PASS+1)); else FAIL=$((FAIL+1)); fi
+rm -rf "$S_BOTH_NO_MVN"
+
 rm -rf "$S_NPM_OK" "$S_NPM_BAD" "$S_BOTH"
 
 # ---- 补充裁决测试（Task 11 评审）----
