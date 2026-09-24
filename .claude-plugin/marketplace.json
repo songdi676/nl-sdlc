@@ -1,5 +1,6 @@
 {
   "name": "nl-sdlc-marketplace",
+  "description": "NewLand 团队 SDLC 自动化插件市场（本地自举）",
   "owner": { "name": "NewLand" },
   "plugins": [
     { "name": "nl-sdlc", "source": "./", "description": "AI Agent 驱动的 SDLC 全流程自动化插件" }
