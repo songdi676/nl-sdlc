@@ -1931,7 +1931,7 @@ echo "$PASS passed, $FAIL failed"
 ```
 
 Run: `bash hooks/hooks-test.sh`
-Expected: `4 passed, 0 failed`。（若伪造 Maven 场景的路径拼接在实施中不成立，修正为插件根绝对路径后复跑。）
+Expected: `5 passed, 0 failed`。（若伪造 Maven 场景的路径拼接在实施中不成立，修正为插件根绝对路径后复跑。）
 
 - [ ] **Step 6: 运行插件级校验** — Run: `claude plugin validate .`，Expected: 通过。
 
@@ -2302,7 +2302,7 @@ agent-teams 功能依赖 Claude Code 实验特性（CLAUDE_CODE_EXPERIMENTAL_AGE
 Run: `node scripts/validate-plugin.mjs` → PASS（6 skills、4 agents、3 commands、3 workflows）。
 Run: `bash scripts/quality-gate-test.sh` → `6 passed, 0 failed`。
 Run: `bash scripts/run-tests-test.sh` → `3 passed, 0 failed`。
-Run: `bash hooks/hooks-test.sh` → `4 passed, 0 failed`。
+Run: `bash hooks/hooks-test.sh` → `5 passed, 0 failed`。
 Run: `claude plugin validate .` → 通过。
 
 - [ ] **Step 6: Commit**
@@ -2317,6 +2317,6 @@ git commit -m "docs: 共享清单（DoD/安全/测试）+ README 安装与 CI �
 ## 完成标准（全部任务后）
 
 - [ ] `claude plugin validate .` 通过
-- [ ] 三个测试脚本全绿：quality-gate-test.sh（7）、run-tests-test.sh（3）、hooks-test.sh（4）
+- [ ] 三个测试脚本全绿：quality-gate-test.sh（7）、run-tests-test.sh（3）、hooks-test.sh（5）
 - [ ] `node scripts/validate-plugin.mjs` 报告 6 skills / 4 agents / 3 commands / 3 workflows
 - [ ] 在演示项目（Maven 后端 + Vue 前端）中完成一次端到端演练：`/nl-sdlc:requirement` → `/nl-sdlc:development` → `/nl-sdlc:test` → CI 模板跑通 → Docker 镜像构建成功
