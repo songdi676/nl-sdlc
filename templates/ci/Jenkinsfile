@@ -1,0 +1,42 @@
+pipeline {
+  agent none
+  environment { ANTHROPIC_API_KEY = credentials('anthropic-api-key') /* 仅 ai-report 需要 */ }
+  stages {
+    stage('quality-backend') {
+      agent { docker { image 'maven:3.9-eclipse-temurin-17' } }
+      steps {
+        sh 'mvn checkstyle:check spotbugs:check test jacoco:report jacoco:check'
+        sh 'mvn dependency-check:check'
+      }
+      post { always { junit 'target/surefire-reports/TEST-*.xml' } }
+    }
+    stage('quality-frontend') {
+      agent { docker { image 'node:20' } }
+      steps {
+        sh 'npm ci && npm run lint && npx vue-tsc --noEmit && npx vitest run --coverage && npm audit --audit-level=high'
+      }
+    }
+    stage('test-api') {
+      agent { docker { image 'node:20' } }
+      steps {
+        sh 'npm i -g newman && newman run tests/api/*.postman_collection.json --reporters cli,junit --reporter-junit-export build/test-results/newman/report.xml'
+      }
+      post { always { junit 'build/test-results/newman/report.xml' } }
+    }
+    stage('test-e2e') {
+      agent { docker { image 'mcr.microsoft.com/playwright:v1.40.0-jammy' } }
+      steps {
+        sh 'npm ci && npx playwright install --with-deps chromium && npx playwright test'
+      }
+      post { always { archiveArtifacts artifacts: 'test-results/**', allowEmptyArchive: true } }
+    }
+    stage('docker-build') {
+      when { branch 'main' }
+      steps {
+        sh 'docker build -f templates/docker/Dockerfile.java -t registry/${env.JOB_NAME}:latest .'
+        sh 'docker build -f templates/docker/Dockerfile.vue -t registry/${env.JOB_NAME}-web:latest .'
+        sh 'docker push registry/${env.JOB_NAME}:latest && docker push registry/${env.JOB_NAME}-web:latest'
+      }
+    }
+  }
+}

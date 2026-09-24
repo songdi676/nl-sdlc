@@ -1,5 +1,8 @@
 * text=auto
 *.sh text eol=lf
+Jenkinsfile text eol=lf
+Dockerfile* text eol=lf
+nginx.conf text eol=lf
 *.md text eol=lf
 *.json text eol=lf
 *.js text eol=lf

@@ -1,0 +1,69 @@
+# 使用说明：复制到项目根 .gitlab-ci.yml，runner 需支持 docker 执行器
+stages: [quality, test, docker]
+
+variables:
+  MAVEN_IMAGE: maven:3.9-eclipse-temurin-17
+  NODE_IMAGE: node:20
+
+quality-backend:
+  stage: quality
+  image: $MAVEN_IMAGE
+  script:
+    - mvn checkstyle:check spotbugs:check test jacoco:report jacoco:check
+    - mvn dependency-check:check
+  artifacts:
+    when: always
+    reports:
+      junit: target/surefire-reports/TEST-*.xml
+
+quality-frontend:
+  stage: quality
+  image: $NODE_IMAGE
+  script:
+    - npm ci
+    - npm run lint
+    - npx vue-tsc --noEmit
+    - npx vitest run --coverage
+    - npm audit --audit-level=high
+
+test-api:
+  stage: test
+  image: $NODE_IMAGE
+  script:
+    - npm i -g newman
+    - newman run tests/api/*.postman_collection.json --reporters cli,junit --reporter-junit-export build/test-results/newman/report.xml
+  artifacts:
+    when: always
+    reports:
+      junit: build/test-results/newman/report.xml
+
+test-e2e:
+  stage: test
+  image: mcr.microsoft.com/playwright:v1.40.0-jammy
+  script:
+    - npm ci
+    - npx playwright install --with-deps chromium
+    - npx playwright test
+  artifacts:
+    when: always
+    paths: [test-results/]
+
+docker-build:
+  stage: docker
+  image: docker:24
+  services: [docker:24-dind]
+  script:
+    - docker build -f templates/docker/Dockerfile.java -t ${CI_REGISTRY_IMAGE}:${CI_COMMIT_TAG:-latest} .
+    - docker build -f templates/docker/Dockerfile.vue -t ${CI_REGISTRY_IMAGE}-web:${CI_COMMIT_TAG:-latest} .
+    - docker push ${CI_REGISTRY_IMAGE}:${CI_COMMIT_TAG:-latest}
+    - docker push ${CI_REGISTRY_IMAGE}-web:${CI_COMMIT_TAG:-latest}
+  only: [main, tags]
+
+# 可选 AI 诊断 job（默认关闭：去掉注释启用，需配置 ANTHROPIC_API_KEY 变量）
+# ai-report:
+#   stage: test
+#   image: $NODE_IMAGE
+#   script:
+#     - npm i -g @anthropic-ai/claude-code
+#     - claude -p "分析本次流水线失败原因并输出诊断报告" --allowedTools "Bash,Read,Grep,Glob"
+#   when: on_failure
