@@ -69,10 +69,13 @@ nl-sdlc/
 
 ```
 需求 workflow ──► 开发 workflow ──► 测试 workflow ──► CI(docker job)
-分析→设计(3票质疑)→任务列表   编码→质量门(打回循环)→评审   接口测试→E2E→报告   构建镜像
-     │              │                │                 │
-产物: docs/designs/   产物: 代码+测试   产物: 测试报告     产物: Docker 镜像
-     docs/plans/tasks.md   +质量门报告
+分析→概要设计(3票质疑)   编码→质量门(打回循环)→评审   接口测试→E2E→报告   构建镜像
+ →详细设计+任务列表        │                │                 │
+     │                    │                │                 │
+产物: docs/designs/       产物: 代码+测试   产物: 测试报告     产物: Docker 镜像
+     <feature>-design.md   +质量门报告
+     docs/plans/<feature>/
+     (详细设计.md+tasks.md)
 ```
 
 ## 4. Workflow 设计
@@ -84,7 +87,7 @@ nl-sdlc/
 │
 ├─ Phase 1 分析: 需求分析 agent → 结构化需求（用户故事、验收标准、非功能需求）
 │
-├─ Phase 2 设计: 设计 agent → 设计文档（架构/数据模型/接口设计）
+├─ Phase 2 概要设计: 设计 agent → 概要设计文档（架构/数据模型/接口设计）
 │       │
 │       └─ 3票质疑: 3 个质疑 agent 并行（架构视角/安全视角/测试视角）
 │           各投一票 pass/reject+理由；第二轮起互相能看到对方的质疑再投票
@@ -92,16 +95,18 @@ nl-sdlc/
 │           ├─ 未过 → 设计 agent 按质疑修订 → 重新投票（最多 3 轮）
 │           └─ 3 轮仍不通过 → 输出分歧报告，转人工决策
 │
-└─ Phase 3 任务列表: 任务分解 agent → docs/plans/tasks.md
+└─ Phase 3 详细设计+任务列表: 基于通过的概要设计
+     产物: docs/plans/<feature>/详细设计.md + docs/plans/<feature>/tasks.md
      （任务含依赖关系、验收标准、关联测试用例清单，格式可被开发阶段直接消费）
 
-产物: docs/designs/YYYY-MM-DD-<feature>-design.md + docs/plans/tasks.md
+产物: docs/designs/YYYY-MM-DD-<feature>-design.md（概要设计）
+      + docs/plans/<feature>/详细设计.md + docs/plans/<feature>/tasks.md
 ```
 
 ### 4.2 开发 `/nl-sdlc:dev`（development.js）
 
 ```
-输入: docs/plans/tasks.md（可 args 指定任务范围）
+输入: docs/plans/<feature>/tasks.md + 详细设计.md（可 args 指定任务范围）
 │
 ├─ Phase 1 编码: 解析任务（含依赖顺序）→ 每任务一个 dev 子代理按 TDD 编码
 │
@@ -115,7 +120,7 @@ nl-sdlc/
 产物: 代码 + 质量门报告(JSON) + 评审报告
 ```
 
-**交互式变体**（同一流程，agent-teams 执行）：lead 从 tasks.md 建共享任务列表 → 生成 3 个 dev 队友并行认领（文件锁防冲突）→ `TeammateIdle` hook 在队友收工前跑质量门，未过门 exit 2 打回继续修 → `TaskCompleted` hook 验证验收标准 → 完成后生成 3 个 review 队友并行互搏评审 → **人工批准**后合并。
+**交互式变体**（同一流程，agent-teams 执行）：lead 从 docs/plans/<feature>/tasks.md 建共享任务列表 → 生成 3 个 dev 队友并行认领（文件锁防冲突）→ `TeammateIdle` hook 在队友收工前跑质量门，未过门 exit 2 打回继续修 → `TaskCompleted` hook 验证验收标准 → 完成后生成 3 个 review 队友并行互搏评审 → **人工批准**后合并。
 
 ### 4.3 测试 `/nl-sdlc:test`（testing.js）
 
@@ -132,7 +137,7 @@ nl-sdlc/
 产物: 测试报告（HTML 存档 + JSON 供 CI 判定）+ 用例与需求追溯矩阵
 ```
 
-测试用例与代码同等管理：存仓库、版本化、可重复运行。需求阶段产出用例清单，开发阶段按清单编写用例，测试阶段执行——三个 workflow 通过 tasks.md 中的用例清单串起来。
+测试用例与代码同等管理：存仓库、版本化、可重复运行。需求阶段产出用例清单，开发阶段按清单编写用例，测试阶段执行——三个 workflow 通过 docs/plans/<feature>/tasks.md 中的用例清单串起来。
 
 ## 5. Agent-teams 设计
 
