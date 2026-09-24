@@ -1,0 +1,8 @@
+{
+  "name": "nl-sdlc",
+  "description": "AI Agent 驱动的 SDLC 全流程自动化插件：需求→编码→评审→测试→CI/CD，面向 Java(Maven)+Vue 3 团队",
+  "version": "0.1.0",
+  "author": { "name": "NewLand" },
+  "license": "MIT",
+  "keywords": ["sdlc", "java", "maven", "vue", "ci", "workflow", "quality-gate", "agent-teams"]
+}
