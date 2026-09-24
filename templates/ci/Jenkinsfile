@@ -1,6 +1,11 @@
+// 口径说明：本模板 quality/test 命令与插件 scripts/quality-gate.sh、scripts/run-tests.sh 的判定口径一致；
+// 阈值配置见 templates/config/quality-gate.yaml，Java 覆盖率阈值需在 pom.xml 的 jacoco rules 配置，
+// Vue 覆盖率阈值在 vitest 配置。
 pipeline {
   agent none
-  environment { ANTHROPIC_API_KEY = credentials('anthropic-api-key') /* 仅 ai-report 需要 */ }
+  // 顶层 environment 留空：ANTHROPIC_API_KEY 仅可选 ai-report 需要，
+  // 启用 ai-report 时取消下面注释（并先在 Jenkins 凭据中创建 ID 为 anthropic-api-key 的 Secret text）。
+  // environment { ANTHROPIC_API_KEY = credentials('anthropic-api-key') }
   stages {
     stage('quality-backend') {
       agent { docker { image 'maven:3.9-eclipse-temurin-17' } }
@@ -31,11 +36,22 @@ pipeline {
       post { always { archiveArtifacts artifacts: 'test-results/**', allowEmptyArchive: true } }
     }
     stage('docker-build') {
+      // 镜像标签需要 commit（git rev-parse）；官方 docker:24 不含 git，故用 -git 变体
+      agent { docker { image 'docker:24-git' } }
       when { branch 'main' }
       steps {
-        sh 'docker build -f templates/docker/Dockerfile.java -t registry/${env.JOB_NAME}:latest .'
-        sh 'docker build -f templates/docker/Dockerfile.vue -t registry/${env.JOB_NAME}-web:latest .'
-        sh 'docker push registry/${env.JOB_NAME}:latest && docker push registry/${env.JOB_NAME}-web:latest'
+        script {
+          // 优先取 Git 插件注入的 GIT_COMMIT（不依赖镜像内 git）；缺失时在工作区读取，
+          // 容器内为 root 而工作区归 agent 用户，先加 safe.directory 规避 dubious ownership
+          def sha = env.GIT_COMMIT ? env.GIT_COMMIT.take(7) : sh(returnStdout: true, script: 'git config --global --add safe.directory "$PWD" && git rev-parse --short HEAD').trim()
+          def tag = "${env.BUILD_NUMBER}-${sha}"
+          def apiImage = "registry/${env.JOB_NAME}:${tag}"
+          def webImage = "registry/${env.JOB_NAME}-web:${tag}"
+          sh "docker build -f templates/docker/Dockerfile.java -t ${apiImage} ."
+          sh "docker build -f templates/docker/Dockerfile.vue -t ${webImage} ."
+          sh "docker push ${apiImage}"
+          sh "docker push ${webImage}"
+        }
       }
     }
   }

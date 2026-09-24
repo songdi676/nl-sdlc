@@ -1,3 +1,6 @@
+# 口径说明：本模板 quality/test 命令与插件 scripts/quality-gate.sh、scripts/run-tests.sh 的判定口径一致；
+# 阈值配置见 templates/config/quality-gate.yaml，Java 覆盖率阈值需在 pom.xml 的 jacoco rules 配置，
+# Vue 覆盖率阈值在 vitest 配置。
 name: nl-sdlc pipeline
 on:
   push: { branches: [main] }
@@ -34,7 +37,18 @@ jobs:
     needs: [quality-backend, quality-frontend, test-api, test-e2e]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
+    # 推送 GHCR 需 packages: write（GITHUB_TOKEN 默认无写包权限）
+    permissions: { contents: read, packages: write }
     steps:
       - uses: actions/checkout@v4
-      - run: docker build -f templates/docker/Dockerfile.java -t ${REGISTRY}/${GITHUB_REPOSITORY}:latest .
-      - run: docker build -f templates/docker/Dockerfile.vue -t ${REGISTRY}/${GITHUB_REPOSITORY}-web:latest .
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # 标签语义 {registry}/{project}:{version}-{commit}；本 job 仅在 main 触发（见 if），
+      # 故 github.ref_name 必为 main 且不含 /；若放开到其他 ref，含 / 的 ref 名不能直接用作 tag
+      - run: docker build -f templates/docker/Dockerfile.java -t ghcr.io/${{ github.repository }}:${{ github.ref_name }}-${{ github.sha }} .
+      - run: docker push ghcr.io/${{ github.repository }}:${{ github.ref_name }}-${{ github.sha }}
+      - run: docker build -f templates/docker/Dockerfile.vue -t ghcr.io/${{ github.repository }}-web:${{ github.ref_name }}-${{ github.sha }} .
+      - run: docker push ghcr.io/${{ github.repository }}-web:${{ github.ref_name }}-${{ github.sha }}

@@ -1,3 +1,6 @@
+# 口径说明：本模板 quality/test 命令与插件 scripts/quality-gate.sh、scripts/run-tests.sh 的判定口径一致；
+# 阈值配置见 templates/config/quality-gate.yaml，Java 覆盖率阈值需在 pom.xml 的 jacoco rules 配置，
+# Vue 覆盖率阈值在 vitest 配置。
 # 使用说明：复制到项目根 .gitlab-ci.yml，runner 需支持 docker 执行器
 stages: [quality, test, docker]
 
@@ -52,11 +55,17 @@ docker-build:
   stage: docker
   image: docker:24
   services: [docker:24-dind]
+  # dind 需显式指定 daemon 地址并关闭 TLS（无 TLS 证书场景），否则 client 默认走 TLS 且无 DOCKER_HOST
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
   script:
-    - docker build -f templates/docker/Dockerfile.java -t ${CI_REGISTRY_IMAGE}:${CI_COMMIT_TAG:-latest} .
-    - docker build -f templates/docker/Dockerfile.vue -t ${CI_REGISTRY_IMAGE}-web:${CI_COMMIT_TAG:-latest} .
-    - docker push ${CI_REGISTRY_IMAGE}:${CI_COMMIT_TAG:-latest}
-    - docker push ${CI_REGISTRY_IMAGE}-web:${CI_COMMIT_TAG:-latest}
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    # 标签语义 {registry}/{project}:{version}-{commit}：tag 流水线用 CI_COMMIT_TAG，main 分支回退 CI_COMMIT_SHORT_SHA
+    - docker build -f templates/docker/Dockerfile.java -t ${CI_REGISTRY_IMAGE}:${CI_COMMIT_TAG:-$CI_COMMIT_SHORT_SHA} .
+    - docker build -f templates/docker/Dockerfile.vue -t ${CI_REGISTRY_IMAGE}-web:${CI_COMMIT_TAG:-$CI_COMMIT_SHORT_SHA} .
+    - docker push ${CI_REGISTRY_IMAGE}:${CI_COMMIT_TAG:-$CI_COMMIT_SHORT_SHA}
+    - docker push ${CI_REGISTRY_IMAGE}-web:${CI_COMMIT_TAG:-$CI_COMMIT_SHORT_SHA}
   only: [main, tags]
 
 # 可选 AI 诊断 job（默认关闭：去掉注释启用，需配置 ANTHROPIC_API_KEY 变量）
