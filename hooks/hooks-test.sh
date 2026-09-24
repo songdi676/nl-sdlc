@@ -31,5 +31,14 @@ if [ "$code" -eq 0 ]; then PASS=$((PASS+1)); echo "ok - teammate-idle 全绿放�
 else FAIL=$((FAIL+1)); echo "FAIL - teammate-idle 全绿应 exit 0 (exit $code)"; fi
 rm -rf "$S"
 
+# task-completed：伪造全绿 Maven 项目 → exit 0 且输出含验收标准提醒
+S=$(mktemp -d); mkdir -p "$S/sub" && touch "$S/sub/pom.xml"
+mkdir -p "$S/sub/target/site/jacoco" && printf 'GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED,BRANCH_MISSED,LINE_MISSED,LINE_COVERED\na,Example,0,0,0,0,20,80\n' > "$S/sub/target/site/jacoco/jacoco.csv"
+printf '#!/bin/bash\nexit 0\n' > "$S/mvn" && chmod +x "$S/mvn"
+OUT=$( cd "$S/sub" && PATH="$S:$PATH" bash "$PLUGIN_ROOT/hooks/task-completed.sh" 2>/dev/null ); code=$?
+if [ "$code" -eq 0 ] && echo "$OUT" | grep -q '验收标准逐条达成'; then PASS=$((PASS+1)); echo "ok - task-completed 全绿提醒"
+else FAIL=$((FAIL+1)); echo "FAIL - task-completed 全绿应 exit 0 且含验收标准提醒 (exit $code, out: $OUT)"; fi
+rm -rf "$S"
+
 echo "$PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
