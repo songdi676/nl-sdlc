@@ -26,7 +26,7 @@ description: Use when starting any SDLC work in this repo - routes the task to t
 | 分析新需求 / 出设计 / 拆任务 | `/nl-sdlc:requirement` workflow |
 | 按任务编码 / 修复打回问题 | 本 skill 的「编码」节 → `nl-sdlc:coding` skill |
 | 评审代码 / 安全审查 | `nl-sdlc:code-review` skill |
-| 接口测试 / E2E / 修测试用例 | `/nl-sdlc:testing` workflow |
+| 接口测试 / E2E / 修测试用例 | `/nl-sdlc:test` workflow |
 | 合并 / 交付 | `nl-sdlc:delivery` skill |
 
 阶段与载体总览：
@@ -36,14 +36,14 @@ description: Use when starting any SDLC work in this repo - routes the task to t
 | 需求 | `nl-sdlc:requirement-analysis` | `/nl-sdlc:requirement` |
 | 编码 | `nl-sdlc:coding` | `/nl-sdlc:development`（批量） |
 | 评审 | `nl-sdlc:code-review` | — |
-| 测试 | `nl-sdlc:testing` | `/nl-sdlc:testing` |
+| 测试 | `nl-sdlc:testing` | `/nl-sdlc:test` |
 | 交付 | `nl-sdlc:delivery` | — |
 
 判断规则：
 
 - 意图不明确或多阶段混合 → 从最左（需求）阶段开始，一次只推进一个阶段。
 - "修 bug"是编码任务：走「编码」节，修复后的代码同样要过评审与测试。
-- 修测试用例本身是测试任务，走 `/nl-sdlc:testing`，不要当编码任务处理。
+- 修测试用例本身是测试任务，走 `/nl-sdlc:test`，不要当编码任务处理。
 
 ## 编码节（交互式开发会话）
 
