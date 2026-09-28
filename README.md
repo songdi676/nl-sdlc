@@ -10,6 +10,8 @@ claude plugin marketplace add .claude-plugin/marketplace.json
 claude plugin install nl-sdlc@nl-sdlc-marketplace
 ```
 
+> **详细操作手册**（含资产落地清单、各阶段步骤、故障排查表）：见 [docs/USER-GUIDE.md](docs/USER-GUIDE.md)。安装后需要把 `scripts/`、`templates/` 中相关文件复制进业务项目（手册第 1.3 节）。
+
 ## 启用 agent-teams（实验性，可选）
 
 在 settings.json 中设置 `"env": { "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1" }`。

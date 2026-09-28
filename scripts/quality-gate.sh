@@ -32,7 +32,12 @@ load_thresholds() {
   local file="$1"
   COV_BACKEND=80; COV_FRONTEND=70
   EXTRA_WARNINGS=""
-  if [ -z "$file" ]; then return; fi
+  # 未显式指定时，按项目内常见位置查找（README/手册承诺"复制到项目根后生效"）
+  if [ -z "$file" ]; then
+    if [ -f quality-gate.yaml ]; then file=quality-gate.yaml
+    elif [ -f templates/config/quality-gate.yaml ]; then file=templates/config/quality-gate.yaml
+    else return; fi
+  fi
   if [ ! -f "$file" ]; then
     EXTRA_WARNINGS='"阈值文件缺失，使用默认值(Java 80/Vue 70)"'
     return
@@ -74,23 +79,25 @@ run_backend() {
   if [ -z "$MVN" ]; then emit '{"overall":"fail","scope":"backend","project_type":"maven","warnings":["mvn 未安装"],"checks":[],"coverage":null}' 2; fi
 
   local checks='[]' cs_status=pass cs_detail="0 违规" cs_sug='[]'
-  local sb_status=pass sb_detail="0 高危/中危"
-  local cov_status=pass cov_line=0 cov_threshold=${COV_BACKEND:-80}
-  local dep_status=pass
+  local sb_status=pass sb_detail="0 高危/中危" sb_sug='[]'
+  local cov_status=pass cov_line=0 cov_threshold=${COV_BACKEND:-80} cov_hint=""
+  local dep_status=pass dep_detail="无高危漏洞" dep_sug='[]'
 
   if ! "$MVN" checkstyle:check >/dev/null 2>&1; then
     cs_status=fail; cs_detail="checkstyle 违规（阿里 P3C）"; cs_sug='["运行 mvn checkstyle:check 查看违规明细并修复"]'
   fi
   if ! "$MVN" spotbugs:check >/dev/null 2>&1; then
-    sb_status=fail
+    sb_status=fail; sb_detail="spotbugs 违规（高危/中危未清零）"; sb_sug='["运行 mvn spotbugs:check 查看明细并修复"]'
   fi
   # jacoco 行覆盖：从 target/site/jacoco/jacoco.csv 解析（缺文件按失败处理）
   # 列语义：$1=GROUP $2=CLASS $7=LINE_MISSED $8=LINE_COVERED（首行为表头，NR>1 跳过）
   if [ -f target/site/jacoco/jacoco.csv ]; then
     cov_line=$(awk -F',' 'NR>1 { im+=$7; ic+=$8 } END { if (ic+im>0) printf "%.1f", 100*ic/(ic+im); else print 0 }' target/site/jacoco/jacoco.csv)
-    if ! awk -v l="$cov_line" -v t="$cov_threshold" 'BEGIN { exit !(l >= t) }'; then cov_status=fail; fi
+    if ! awk -v l="$cov_line" -v t="$cov_threshold" 'BEGIN { exit !(l >= t) }'; then
+      cov_status=fail; cov_hint="行覆盖率 ${cov_line}% 低于阈值 ${cov_threshold}%，补充单元测试后运行 mvn test jacoco:report 再检查"
+    fi
   else
-    cov_status=fail
+    cov_status=fail; cov_hint="缺 target/site/jacoco/jacoco.csv，先运行 mvn test jacoco:report 生成覆盖率报告"
   fi
   # Dependency-Check：本任务以脚本包装形式调用，详细扫描在 Task 19 模板中启用
   local DC; DC=$(resolve dependency-check)
@@ -99,11 +106,12 @@ run_backend() {
   local overall=pass
   [ "$cs_status" = fail ] || [ "$sb_status" = fail ] || [ "$cov_status" = fail ] || [ "$dep_status" = fail ] && overall=fail
 
-  checks=$(printf '[{"name":"checkstyle","status":"%s","details":"%s","suggestions":%s},{"name":"spotbugs","status":"%s","details":"%s","suggestions":[]},{"name":"dependency-check","status":"%s","details":"%s","suggestions":[]}]' \
+  checks=$(printf '[{"name":"checkstyle","status":"%s","details":"%s","suggestions":%s},{"name":"spotbugs","status":"%s","details":"%s","suggestions":%s},{"name":"dependency-check","status":"%s","details":"%s","suggestions":%s}]' \
     "$cs_status" "$(json_escape "$cs_detail")" "$cs_sug" \
-    "$sb_status" "$(json_escape "$sb_detail")" "$dep_status" "$(json_escape "无高危漏洞" )")
-  printf '{"overall":"%s","scope":"backend","project_type":"maven","warnings":[%s],"checks":%s,"coverage":{"line":%s,"threshold":%s,"status":"%s"}}' \
-    "$overall" "${EXTRA_WARNINGS:-}" "$checks" "$cov_line" "$cov_threshold" "$cov_status"
+    "$sb_status" "$(json_escape "$sb_detail")" "$sb_sug" \
+    "$dep_status" "$(json_escape "$dep_detail")" "$dep_sug")
+  printf '{"overall":"%s","scope":"backend","project_type":"maven","warnings":[%s],"checks":%s,"coverage":{"line":%s,"threshold":%s,"status":"%s","hint":"%s"}}' \
+    "$overall" "${EXTRA_WARNINGS:-}" "$checks" "$cov_line" "$cov_threshold" "$cov_status" "$(json_escape "$cov_hint")"
 }
 
 # ---- Vue 门 ----
@@ -124,31 +132,40 @@ run_frontend() {
     fi
   fi
 
-  local lint_status=pass tsc_status=pass tsc_detail="类型检查" audit_status=pass cov_status=pass cov_threshold=${COV_FRONTEND:-70}
+  local lint_status=pass lint_detail="0 error" lint_sug='[]'
+  local tsc_status=pass tsc_detail="类型检查" tsc_sug='[]'
+  local audit_status=pass audit_detail="无高危" audit_sug='[]'
+  local cov_status=pass cov_threshold=${COV_FRONTEND:-70} cov_hint=""
   local cov_line=0
-  if [ -z "$VTS" ]; then tsc_status=fail; tsc_detail="vue-tsc 不可用"; fi
-  if ! "$NPM" run lint >/dev/null 2>&1; then lint_status=fail; fi
+  if [ -z "$VTS" ]; then tsc_status=fail; tsc_detail="vue-tsc 不可用"; tsc_sug='["npm i -D vue-tsc 安装后重跑"]'; fi
+  if ! "$NPM" run lint >/dev/null 2>&1; then
+    lint_status=fail; lint_detail="ESLint 违规"; lint_sug='["运行 npm run lint 查看明细并修复"]'
+  fi
   if [ -n "$VTS" ]; then
     if [ -n "$VTS_NPX" ]; then
-      "$VTS_NPX" --no-install vue-tsc --noEmit >/dev/null 2>&1 || tsc_status=fail
+      "$VTS_NPX" --no-install vue-tsc --noEmit >/dev/null 2>&1 || { tsc_status=fail; tsc_detail="类型检查未通过"; tsc_sug='["运行 npx vue-tsc --noEmit 查看明细并修复"]'; }
     else
-      "$VTS" --noEmit >/dev/null 2>&1 || tsc_status=fail
+      "$VTS" --noEmit >/dev/null 2>&1 || { tsc_status=fail; tsc_detail="类型检查未通过"; tsc_sug='["运行 vue-tsc --noEmit 查看明细并修复"]'; }
     fi
   fi
-  if ! "$NPM" audit --audit-level=high >/dev/null 2>&1; then audit_status=fail; fi
+  if ! "$NPM" audit --audit-level=high >/dev/null 2>&1; then
+    audit_status=fail; audit_detail="存在高危依赖漏洞"; audit_sug='["运行 npm audit 查看明细并升级依赖"]'
+  fi
   # Vitest 覆盖率：从 coverage/coverage-summary.json 读取 lines.pct
   if [ -f coverage/coverage-summary.json ]; then
     cov_line=$(node -e 'const s=JSON.parse(require("fs").readFileSync("coverage/coverage-summary.json","utf8")).total.lines.pct; process.stdout.write(String(Math.round(s*10)/10))' 2>/dev/null || echo 0)
-    if ! awk -v l="$cov_line" -v t="$cov_threshold" 'BEGIN { exit !(l >= t) }'; then cov_status=fail; fi
+    if ! awk -v l="$cov_line" -v t="$cov_threshold" 'BEGIN { exit !(l >= t) }'; then
+      cov_status=fail; cov_hint="行覆盖率 ${cov_line}% 低于阈值 ${cov_threshold}%，补充单元测试后运行 npx vitest run --coverage 再检查"
+    fi
   else
-    cov_status=fail
+    cov_status=fail; cov_hint="缺 coverage/coverage-summary.json，先运行 npx vitest run --coverage 生成报告（需配置 json-summary reporter）"
   fi
 
   local overall=pass
   [ "$lint_status" = fail ] || [ "$tsc_status" = fail ] || [ "$audit_status" = fail ] || [ "$cov_status" = fail ] && overall=fail
 
-  printf '{"overall":"%s","scope":"frontend","project_type":"vue","warnings":[%s],"checks":[{"name":"eslint","status":"%s","details":"0 error","suggestions":[]},{"name":"vue-tsc","status":"%s","details":"%s","suggestions":[]},{"name":"npm-audit","status":"%s","details":"无高危","suggestions":[]}],"coverage":{"line":%s,"threshold":%s,"status":"%s"}}' \
-    "$overall" "${EXTRA_WARNINGS:-}" "$lint_status" "$tsc_status" "$(json_escape "$tsc_detail")" "$audit_status" "$cov_line" "$cov_threshold" "$cov_status"
+  printf '{"overall":"%s","scope":"frontend","project_type":"vue","warnings":[%s],"checks":[{"name":"eslint","status":"%s","details":"%s","suggestions":%s},{"name":"vue-tsc","status":"%s","details":"%s","suggestions":%s},{"name":"npm-audit","status":"%s","details":"%s","suggestions":%s}],"coverage":{"line":%s,"threshold":%s,"status":"%s","hint":"%s"}}' \
+    "$overall" "${EXTRA_WARNINGS:-}" "$lint_status" "$(json_escape "$lint_detail")" "$lint_sug" "$tsc_status" "$(json_escape "$tsc_detail")" "$tsc_sug" "$audit_status" "$(json_escape "$audit_detail")" "$audit_sug" "$cov_line" "$cov_threshold" "$cov_status" "$(json_escape "$cov_hint")"
 }
 
 case "$SCOPE" in

@@ -125,6 +125,34 @@ if [ $? -eq 2 ] && echo "$out" | grep -q '"project_type":"maven"'; then PASS=$((
 else FAIL=$((FAIL+1)); echo "FAIL - mvn 缺失应 exit 2 + project_type=maven (out: $out)"; fi
 rm -rf "$S_NO_MVN"
 
+# ---- 读者测试修复（H1/H2/H3）----
+# 测试 12：未传 --thresholds 时默认查找项目根 quality-gate.yaml（阈值 95 → 80% 覆盖率应 fail）
+printf 'backend_coverage: 95\n' > target-stub-projects/backend/quality-gate.yaml
+out=$(cd target-stub-projects/backend && bash "$QG" --stub-dir "$S_ALL" --scope backend 2>/dev/null)
+if [ $? -eq 1 ] && echo "$out" | grep -q '"overall":"fail"' && echo "$out" | grep -q '"threshold":95'; then PASS=$((PASS+1)); echo "ok - 默认查找项目根阈值文件"
+else FAIL=$((FAIL+1)); echo "FAIL - 项目根 quality-gate.yaml 应生效（阈值 95 > 80 覆盖率）(out: $out)"; fi
+rm target-stub-projects/backend/quality-gate.yaml
+
+# 测试 13：spotbugs 失败时 details/suggestions 给真实指引（非写死空）
+S_SB=$(mktemp -d)
+printf '#!/bin/bash\nif [ "$1" = "spotbugs:check" ]; then exit 1; fi\nexit 0\n' > "$S_SB/mvn"
+chmod +x "$S_SB/mvn"
+out=$(cd target-stub-projects/backend && bash "$QG" --stub-dir "$S_SB" --scope backend 2>/dev/null)
+if [ $? -eq 1 ] && echo "$out" | grep -q '"spotbugs"' && echo "$out" | grep -q 'spotbugs:check 查看明细'; then PASS=$((PASS+1)); echo "ok - spotbugs 失败详情指引"
+else FAIL=$((FAIL+1)); echo "FAIL - spotbugs 失败应含真实指引 (out: $out)"; fi
+rm -rf "$S_SB"
+
+# 测试 14：覆盖率报告缺失时 coverage.hint 给出生成指引
+S_NOCOV=$(mktemp -d)
+printf '#!/bin/bash\nexit 0\n' > "$S_NOCOV/mvn"
+chmod +x "$S_NOCOV/mvn"
+mkdir -p target-stub-projects/backend-nocov
+touch target-stub-projects/backend-nocov/pom.xml
+out=$(cd target-stub-projects/backend-nocov && bash "$QG" --stub-dir "$S_NOCOV" --scope backend 2>/dev/null)
+if [ $? -eq 1 ] && echo "$out" | grep -q 'mvn test jacoco:report 生成覆盖率报告'; then PASS=$((PASS+1)); echo "ok - 缺覆盖率报告给出生成指引"
+else FAIL=$((FAIL+1)); echo "FAIL - 缺覆盖率报告应含 hint 指引 (out: $out)"; fi
+rm -rf "$S_NOCOV"
+
 rm -rf "$S_ALL" "$S_CS" "$S_EMPTY"
 echo "$PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
