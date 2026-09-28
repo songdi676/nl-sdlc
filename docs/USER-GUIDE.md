@@ -16,7 +16,7 @@ AI Agent 驱动的 SDLC 全流程自动化插件：需求 → 编码 → 评审 
 `marketplace.json` 位于**插件仓库**（本项目）的 `.claude-plugin/` 目录下——先 clone 插件仓库（或按团队分发方式获取其副本），在插件仓库根目录执行：
 
 ```bash
-claude plugin marketplace add .claude-plugin/marketplace.json
+claude plugin marketplace add ./.claude-plugin/marketplace.json
 claude plugin install nl-sdlc@nl-sdlc-marketplace
 ```
 

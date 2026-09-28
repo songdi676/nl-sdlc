@@ -6,7 +6,7 @@ AI Agent 驱动的 SDLC 全流程自动化插件：需求 → 编码 → 评审 
 ## 安装
 
 ```bash
-claude plugin marketplace add .claude-plugin/marketplace.json
+claude plugin marketplace add ./.claude-plugin/marketplace.json
 claude plugin install nl-sdlc@nl-sdlc-marketplace
 ```
 
