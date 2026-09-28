@@ -23,38 +23,38 @@ description: Use when starting any SDLC work in this repo - routes the task to t
 
 | 用户意图 | 调用 |
 |---|---|
-| 分析新需求 / 出设计 / 拆任务 | `/nl-sdlc:requirement` workflow |
+| 分析新需求 / 出设计 / 拆任务 | 用户可用 `/nl-sdlc:指令`（显式调用架构设计智能体），智能体会跑 `/nl-sdlc:requirement-flow` workflow |
 | 按任务编码 / 修复打回问题 | 本 skill 的「编码」节 → `nl-sdlc:coding` skill |
-| 评审代码 / 安全审查 | `nl-sdlc:code-review` skill |
-| 接口测试 / E2E / 修测试用例 | `/nl-sdlc:test` workflow |
+| 评审代码 / 安全审查 | `/nl-sdlc:review` 命令 → `nl-sdlc:code-review` skill（启用 teams 时三视角并行互搏） |
+| 接口测试 / E2E / 修测试用例 | `/nl-sdlc:test` 命令（teams 并行）或 `/nl-sdlc:test-flow` workflow |
 | 合并 / 交付 | `nl-sdlc:delivery` skill |
 
 阶段与载体总览：
 
 | 阶段 | skill | workflow 命令 |
 |---|---|---|
-| 需求 | `nl-sdlc:requirement-analysis` | `/nl-sdlc:requirement` |
-| 编码 | `nl-sdlc:coding` | `/nl-sdlc:development`（批量） |
+| 需求 | `nl-sdlc:requirement-analysis` | `/nl-sdlc:requirement-flow` |
+| 编码 | `nl-sdlc:coding` | `/nl-sdlc:dev-flow`（批量） |
 | 评审 | `nl-sdlc:code-review` | — |
-| 测试 | `nl-sdlc:testing` | `/nl-sdlc:test` |
+| 测试 | `nl-sdlc:testing` | `/nl-sdlc:test-flow` |
 | 交付 | `nl-sdlc:delivery` | — |
 
 判断规则：
 
 - 意图不明确或多阶段混合 → 从最左（需求）阶段开始，一次只推进一个阶段。
 - "修 bug"是编码任务：走「编码」节，修复后的代码同样要过评审与测试。
-- 修测试用例本身是测试任务，走 `/nl-sdlc:test`，不要当编码任务处理。
+- 修测试用例本身是测试任务，走 `/nl-sdlc:test-flow`，不要当编码任务处理。
 
 ## 编码节（交互式开发会话）
 
 编码是最高频场景。进入本节的交互式会话必须逐条执行：
 
-1. 确认 `docs/plans/<feature>/tasks.md` 与 `详细设计.md` 存在；不存在则先跑 `/nl-sdlc:requirement`
+1. 确认 `docs/plans/<feature>/tasks.md` 与 `详细设计.md` 存在；不存在则先跑 `/nl-sdlc:requirement-flow`
 2. 遵循 `nl-sdlc:coding` skill 做 TDD 编码
 3. 每个任务完成前运行 `bash scripts/quality-gate.sh`，未过门必须修复，禁止提交未过门代码
-4. 若启用 agent-teams（`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`）：从 tasks.md 建共享任务列表，生成 dev 队友并行认领，质量门由 TeammateIdle hook 强制
+4. 若启用 agent-teams（`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`）：从 tasks.md 建共享任务列表，生成 dev 队友并行认领，质量门由 TeammateIdle hook 强制。评审时生成 3 个 review 队友（正确性/安全/性能视角）并行互搏；测试时生成 test 队友并行执行接口/E2E
 
-批量开发（非交互式跑完整批任务）改跑 `/nl-sdlc:development` workflow，它同样按 tasks.md 编码并执行质量门打回循环。
+批量开发（非交互式跑完整批任务）改跑 `/nl-sdlc:dev-flow` workflow，它同样按 tasks.md 编码并执行质量门打回循环。
 
 ## Red Flags
 

@@ -19,5 +19,5 @@ description: Use when a task from docs/plans/<feature>/tasks.md needs implementa
 ## Composition
 
 - Invoke directly when: 单个任务编码（由 lead 或 workflow 委派）
-- Invoke via: `/nl-sdlc:development` workflow 的 Phase 1，或交互式 agent-teams 的 dev 队友
+- Invoke via: `/nl-sdlc:dev-flow` workflow 的 Phase 1，或交互式 agent-teams 的 dev 队友
 - Do not invoke from another persona

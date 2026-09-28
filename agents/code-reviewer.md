@@ -22,5 +22,5 @@ Critical: N  Major: N  Minor: N  Nit: N
 ## Composition
 
 - Invoke directly when: 变更评审（workflow Phase 3 或交互式 review 队友）
-- Invoke via: `/nl-sdlc:development` workflow
+- Invoke via: `/nl-sdlc:dev-flow` workflow
 - Do not invoke from another persona

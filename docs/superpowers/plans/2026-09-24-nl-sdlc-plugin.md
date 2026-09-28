@@ -279,7 +279,7 @@ git commit -m "test: 资产校验脚本（skills/agents/commands/workflows 结�
 
 **Interfaces:**
 - Consumes: 无
-- Produces: skill 名 `using-nl-sdlc`——SessionStart hook（Task 17）注入其全文；它引用后续 skill 名：`requirement-analysis`、`coding`、`code-review`、`testing`、`delivery` 与 workflow 命令 `/nl-sdlc:requirement`、`/nl-sdlc:development`、`/nl-sdlc:test`（引用即可，被引用者稍后创建）。
+- Produces: skill 名 `using-nl-sdlc`——SessionStart hook（Task 17）注入其全文；它引用后续 skill 名：`requirement-analysis`、`coding`、`code-review`、`testing`、`delivery` 与 workflow 命令 `/nl-sdlc:requirement-flow`、`/nl-sdlc:dev-flow`、`/nl-sdlc:test-flow`（引用即可，被引用者稍后创建）。
 
 - [ ] **Step 1: 写 SKILL.md**
 
@@ -301,15 +301,15 @@ description: Use when starting any SDLC work in this repo - routes the task to t
 
 | 用户意图 | 调用 |
 |---|---|
-| 分析新需求 / 出设计 / 拆任务 | `/nl-sdlc:requirement` workflow |
+| 分析新需求 / 出设计 / 拆任务 | `/nl-sdlc:requirement-flow` workflow |
 | 按任务编码 / 修复打回问题 | 本 skill 的「编码」节 → `nl-sdlc:coding` skill |
 | 评审代码 / 安全审查 | `nl-sdlc:code-review` skill |
-| 接口测试 / E2E / 修测试用例 | `/nl-sdlc:test` workflow |
+| 接口测试 / E2E / 修测试用例 | `/nl-sdlc:test-flow` workflow |
 | 合并 / 交付 | `nl-sdlc:delivery` skill |
 
 ## 编码节（交互式开发会话）
 
-1. 确认 `docs/plans/<feature>/tasks.md` 与 `详细设计.md` 存在；不存在则先跑 `/nl-sdlc:requirement`
+1. 确认 `docs/plans/<feature>/tasks.md` 与 `详细设计.md` 存在；不存在则先跑 `/nl-sdlc:requirement-flow`
 2. 遵循 `nl-sdlc:coding` skill 做 TDD 编码
 3. 每个任务完成前运行 `bash scripts/quality-gate.sh`，未过门必须修复，禁止提交未过门代码
 4. 若启用 agent-teams（`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`）：从 tasks.md 建共享任务列表，生成 dev 队友并行认领，质量门由 TeammateIdle hook 强制
@@ -348,7 +348,7 @@ git commit -m "feat: using-nl-sdlc 元技能（SDLC 阶段路由）"
 
 **Interfaces:**
 - Consumes: 需求文档位于 `docs/requirements/*.md`
-- Produces: skill 名 `requirement-analysis`；被 `/nl-sdlc:requirement` workflow（Task 14）以文本引用，作为其需求分析 agent 的工作规范
+- Produces: skill 名 `requirement-analysis`；被 `/nl-sdlc:requirement-flow` workflow（Task 14）以文本引用，作为其需求分析 agent 的工作规范
 
 - [ ] **Step 1: 写 SKILL.md（frontmatter + 章节骨架 + 各节必含要点）**
 
@@ -702,7 +702,7 @@ description: Use when a task from docs/plans/<feature>/tasks.md needs implementa
 ## Composition
 
 - Invoke directly when: 单个任务编码（由 lead 或 workflow 委派）
-- Invoke via: `/nl-sdlc:development` workflow 的 Phase 1，或交互式 agent-teams 的 dev 队友
+- Invoke via: `/nl-sdlc:dev-flow` workflow 的 Phase 1，或交互式 agent-teams 的 dev 队友
 - Do not invoke from another persona
 ```
 
@@ -733,7 +733,7 @@ Critical: N  Major: N  Minor: N  Nit: N
 ## Composition
 
 - Invoke directly when: 变更评审（workflow Phase 3 或交互式 review 队友）
-- Invoke via: `/nl-sdlc:development` workflow
+- Invoke via: `/nl-sdlc:dev-flow` workflow
 - Do not invoke from another persona
 ```
 
@@ -763,7 +763,7 @@ description: Use when code needs a security audit from an OWASP Top 10 perspecti
 ## Composition
 
 - Invoke directly when: 安全审查（workflow 质量门的安全部分或交互式）
-- Invoke via: `/nl-sdlc:development` workflow
+- Invoke via: `/nl-sdlc:dev-flow` workflow
 - Do not invoke from another persona
 ```
 
@@ -790,7 +790,7 @@ description: Use when writing, fixing, or diagnosing API (Postman/Newman) or E2E
 ## Composition
 
 - Invoke directly when: 测试用例工作（testing workflow 或交互式）
-- Invoke via: `/nl-sdlc:test` workflow
+- Invoke via: `/nl-sdlc:test-flow` workflow
 - Do not invoke from another persona
 ```
 
@@ -1386,7 +1386,7 @@ git commit -m "feat: run-tests.sh（Newman + Playwright 统一入口，工具缺
 
 **Interfaces:**
 - Consumes: persona 名 `security-auditor`、`test-engineer`（Task 9）；需求文档 `docs/requirements/*.md`
-- Produces: 命令 `/nl-sdlc:requirement`；tasks.md schema（Task 15 消费）:
+- Produces: 命令 `/nl-sdlc:requirement-flow`；tasks.md schema（Task 15 消费）:
   ```markdown
   ---
   feature: <feature-name>
@@ -1566,7 +1566,7 @@ git commit -m "feat: requirement workflow（分析→概要设计→3票质疑�
 
 **Interfaces:**
 - Consumes: persona 名 `dev-engineer`、`code-reviewer`、`security-auditor`（Task 9）；quality-gate.sh JSON 报告（Task 11/12）；tasks.md schema（Task 14）
-- Produces: 命令 `/nl-sdlc:development`
+- Produces: 命令 `/nl-sdlc:dev-flow`
 
 - [ ] **Step 1: 写 development.js**
 
@@ -1699,7 +1699,7 @@ git commit -m "feat: development workflow（编码→质量门打回循环→三
 
 **Interfaces:**
 - Consumes: persona 名 `test-engineer`（Task 9）；run-tests.sh JSON 输出（Task 13）
-- Produces: 命令 `/nl-sdlc:test`（meta.name 用 `test` 而非 `testing`，避免与 `skills/testing` 在同一命名空间注册为 `/nl-sdlc:testing` 冲突；spec §4.3 的命令名即 `/nl-sdlc:test`）
+- Produces: 命令 `/nl-sdlc:test-flow`（meta.name 用 `test` 而非 `testing`，避免与 `skills/testing` 在同一命名空间注册为 `/nl-sdlc:testing` 冲突；spec §4.3 的命令名即 `/nl-sdlc:test-flow`）
 
 - [ ] **Step 1: 写 testing.js**
 
@@ -2270,15 +2270,15 @@ claude plugin install nl-sdlc@nl-sdlc-marketplace
 ## 启用 agent-teams（实验性，可选）
 
 在 settings.json 中设置 `"env": { "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1" }`。
-Windows 使用 in-process 模式。团队协作失败时回退：直接运行 `/nl-sdlc:development` 重跑。
+Windows 使用 in-process 模式。团队协作失败时回退：直接运行 `/nl-sdlc:dev-flow` 重跑。
 
 ## 使用
 
 | 命令 | 作用 |
 |---|---|
-| `/nl-sdlc:requirement` | 需求分析 → 概要设计（3票质疑，2/3 通过）→ 详细设计 + tasks.md |
-| `/nl-sdlc:development` | 按 tasks.md 编码 → 质量门打回循环 → 三视角评审 |
-| `/nl-sdlc:test` | Newman 接口测试 + Playwright E2E，失败诊断与修复 |
+| `/nl-sdlc:requirement-flow` | 需求分析 → 概要设计（3票质疑，2/3 通过）→ 详细设计 + tasks.md |
+| `/nl-sdlc:dev-flow` | 按 tasks.md 编码 → 质量门打回循环 → 三视角评审 |
+| `/nl-sdlc:test-flow` | Newman 接口测试 + Playwright E2E，失败诊断与修复 |
 | `/nl-sdlc:code` `/nl-sdlc:review` `/nl-sdlc:ship` | 交互式单阶段入口 |
 
 ## 质量门（默认阈值，`templates/config/quality-gate.yaml` 可调）
@@ -2319,4 +2319,4 @@ git commit -m "docs: 共享清单（DoD/安全/测试）+ README 安装与 CI �
 - [ ] `claude plugin validate .` 通过
 - [ ] 三个测试脚本全绿：quality-gate-test.sh（15）、run-tests-test.sh（4）、hooks-test.sh（6）
 - [ ] `node scripts/validate-plugin.mjs` 报告 6 skills / 4 agents / 3 commands / 3 workflows
-- [ ] 在演示项目（Maven 后端 + Vue 前端）中完成一次端到端演练：`/nl-sdlc:requirement` → `/nl-sdlc:development` → `/nl-sdlc:test` → CI 模板跑通 → Docker 镜像构建成功
+- [ ] 在演示项目（Maven 后端 + Vue 前端）中完成一次端到端演练：`/nl-sdlc:requirement-flow` → `/nl-sdlc:dev-flow` → `/nl-sdlc:test-flow` → CI 模板跑通 → Docker 镜像构建成功

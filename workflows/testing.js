@@ -1,5 +1,5 @@
 export const meta = {
-  name: 'test',
+  name: 'test-flow',
   description: '接口测试(Newman)+E2E(Playwright)执行、失败诊断与修复循环',
   phases: [
     { title: '接口测试' },

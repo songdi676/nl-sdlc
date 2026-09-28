@@ -15,18 +15,22 @@ claude plugin install nl-sdlc@nl-sdlc-marketplace
 ## 启用 agent-teams（实验性，可选）
 
 在 settings.json 中设置 `"env": { "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1" }`。
-Windows 使用 in-process 模式。团队协作失败时回退：直接运行 `/nl-sdlc:development` 重跑。
+Windows 使用 in-process 模式。团队协作失败时回退：直接运行 `/nl-sdlc:dev-flow` 重跑。
 
 ## 使用
 
+`-flow` 结尾的是确定性工作流；其余是交互式命令（启用 agent-teams 时并行协作）。
+
 | 命令 | 作用 |
 |---|---|
-| `/nl-sdlc:requirement` | 需求分析 → 概要设计（3票质疑，2/3 通过）→ 详细设计 + tasks.md |
-| `/nl-sdlc:development` | 按 tasks.md 编码 → 质量门打回循环 → 三视角评审 |
-| `/nl-sdlc:test` | Newman 接口测试 + Playwright E2E，失败诊断与修复 |
-| `/nl-sdlc:code` | 交互式单阶段入口：编码 |
-| `/nl-sdlc:review` | 交互式单阶段入口：评审 |
-| `/nl-sdlc:ship` | 交互式单阶段入口：发布 |
+| `/nl-sdlc:指令` | 架构设计入口：显式调用架构设计智能体 → 智能体跑 `/nl-sdlc:requirement-flow` |
+| `/nl-sdlc:requirement-flow` | 需求分析 → 概要设计（3票质疑，2/3 通过）→ 详细设计 + tasks.md |
+| `/nl-sdlc:dev-flow` | 按 tasks.md 编码 → 质量门打回循环 → 三视角评审 |
+| `/nl-sdlc:test-flow` | Newman 接口测试 + Playwright E2E，失败诊断与修复 |
+| `/nl-sdlc:code` | 交互式编码：TDD + 质量门（teams 时 dev 队友并行） |
+| `/nl-sdlc:review` | 交互式评审：五轴评审（teams 时三视角并行互搏） |
+| `/nl-sdlc:test` | 交互式测试：接口/E2E（teams 时 test 队友并行） |
+| `/nl-sdlc:ship` | 交互式交付：最终质量门 + 测试 + MR 人工批准 |
 
 E2E 用例运行时，`playwright.config.ts` 应读 `process.env.PLAYWRIGHT_BASE_URL` 作为 baseURL（`--base-url` 通过该环境变量传递）。
 

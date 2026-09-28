@@ -122,7 +122,7 @@ nl-sdlc/
 
 **交互式变体**（同一流程，agent-teams 执行）：lead 从 docs/plans/<feature>/tasks.md 建共享任务列表 → 生成 3 个 dev 队友并行认领（文件锁防冲突）→ `TeammateIdle` hook 在队友收工前跑质量门，未过门 exit 2 打回继续修 → `TaskCompleted` hook 验证验收标准 → 完成后生成 3 个 review 队友并行互搏评审 → **人工批准**后合并。
 
-### 4.3 测试 `/nl-sdlc:test`（testing.js）
+### 4.3 测试 `/nl-sdlc:test-flow`（testing.js）
 
 ```
 输入: 服务地址/环境参数（args）、tests/api/*.json（Postman collection）、tests/e2e/*.spec.ts

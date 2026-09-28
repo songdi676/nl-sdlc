@@ -18,5 +18,5 @@ description: Use when writing, fixing, or diagnosing API (Postman/Newman) or E2E
 ## Composition
 
 - Invoke directly when: 测试用例工作（testing workflow 或交互式）
-- Invoke via: `/nl-sdlc:test` workflow
+- Invoke via: `/nl-sdlc:test-flow` workflow
 - Do not invoke from another persona

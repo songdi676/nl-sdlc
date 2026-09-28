@@ -21,5 +21,5 @@ description: Use when code needs a security audit from an OWASP Top 10 perspecti
 ## Composition
 
 - Invoke directly when: 安全审查（workflow 质量门的安全部分或交互式）
-- Invoke via: `/nl-sdlc:development` workflow
+- Invoke via: `/nl-sdlc:dev-flow` workflow
 - Do not invoke from another persona

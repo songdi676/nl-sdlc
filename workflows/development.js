@@ -1,5 +1,5 @@
 export const meta = {
-  name: 'development',
+  name: 'dev-flow',
   description: '按 tasks.md 编码→质量门打回循环→三视角评审',
   phases: [
     { title: '任务读取' },

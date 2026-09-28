@@ -5,7 +5,7 @@ AI Agent 驱动的 SDLC 全流程自动化插件：需求 → 编码 → 评审 
 
 适用技术栈：Java（Maven）+ Vue 3（Vite + TypeScript）。
 
-**术语速览**：workflow（`/nl-sdlc:requirement|development|test`）是确定性的自动化流程，由插件自动注册为命令；`/nl-sdlc:code|review|ship` 是交互式薄壳命令，背后是 skill（指导 agent 工作的规范）；agent-teams 是实验性的多会话并行协作。
+**术语速览**：`-flow` 结尾的是 workflow（确定性的自动化流程，由插件自动注册为命令）：`/nl-sdlc:requirement-flow`、`/nl-sdlc:dev-flow`、`/nl-sdlc:test-flow`；其余是交互式薄壳命令，背后是 skill（指导 agent 工作的规范）与 agent（角色智能体）：`/nl-sdlc:指令`（架构设计入口，显式调用架构设计智能体 → 智能体跑 requirement-flow）、`/nl-sdlc:code`、`/nl-sdlc:review`、`/nl-sdlc:test`、`/nl-sdlc:ship`；agent-teams 是实验性的多会话并行协作（code/review/test 启用后自动使用）。
 
 ---
 
@@ -20,7 +20,18 @@ claude plugin marketplace add ./.claude-plugin/marketplace.json
 claude plugin install nl-sdlc@nl-sdlc-marketplace
 ```
 
-安装后可用命令：`/nl-sdlc:requirement`、`/nl-sdlc:development`、`/nl-sdlc:test`、`/nl-sdlc:code`、`/nl-sdlc:review`、`/nl-sdlc:ship`。
+安装后可用命令：`/nl-sdlc:指令`、`/nl-sdlc:requirement-flow`、`/nl-sdlc:dev-flow`、`/nl-sdlc:test-flow`、`/nl-sdlc:code`、`/nl-sdlc:review`、`/nl-sdlc:test`、`/nl-sdlc:ship`。
+
+### 1.1.1 升级插件（已安装旧版时）
+
+插件仓库更新后（例如拉取了本仓库最新代码），执行：
+
+```bash
+cd <插件仓库> && git pull        # 拉取插件最新代码
+claude plugin update nl-sdlc@nl-sdlc-marketplace   # 若 update 不可用，重新执行 marketplace add + install
+```
+
+**升级后必做**：重新执行 [1.3 资产落地](#13-资产落地必做)——把更新后的 `scripts/`、`templates/`、`quality-gate.yaml` 重新复制进业务项目，否则业务项目里的脚本还是旧版本。
 
 ### 1.2 （可选）启用 agent-teams 并行开发
 
@@ -31,7 +42,7 @@ claude plugin install nl-sdlc@nl-sdlc-marketplace
 ```
 
 - Windows 使用 in-process 模式即可（分屏模式不支持）。
-- agent-teams 为实验性功能：协作中途失败时，直接运行 `/nl-sdlc:development` 以 workflow 模式重跑，两条路径产物互通。
+- agent-teams 为实验性功能：协作中途失败时，直接运行 `/nl-sdlc:dev-flow` 以 workflow 模式重跑，两条路径产物互通。
 
 ### 1.3 资产落地（必做）
 
@@ -63,10 +74,10 @@ claude plugin install nl-sdlc@nl-sdlc-marketplace
 以"用户登录"为例：
 
 1. **准备**：完成第 1 章安装与资产落地；把需求写入 `docs/requirements/用户登录.md`（目录必须存在且非空，否则 workflow 直接终止）。
-2. **需求**：`/nl-sdlc:requirement 分析 docs/requirements/ 下文档` → 产出概要设计（3票质疑通过）、详细设计、`docs/plans/用户登录/tasks.md`。注意 feature 名由分析 agent 生成，后续命令要引用它（见 3）。
-3. **开发**：`/nl-sdlc:development 用户登录`（workflow 模式）或交互式编码；质量门不过自动打回修复。
+2. **需求**：运行 `/nl-sdlc:指令`（显式调用架构设计智能体，智能体会跑需求流程；也可直接 `/nl-sdlc:requirement-flow 分析 docs/requirements/ 下文档`）→ 产出概要设计（3票质疑通过）、详细设计、`docs/plans/用户登录/tasks.md`。注意 feature 名由分析 agent 生成，后续命令要引用它（见 3）。
+3. **开发**：`/nl-sdlc:dev-flow 用户登录`（workflow 模式）或交互式编码；质量门不过自动打回修复。
 4. **评审**：`/nl-sdlc:review`；人工在 MR 上批准。
-5. **测试**：编写 `tests/api/*.postman_collection.json` 与 `tests/e2e/*.spec.ts`（用例编写见 6.1），运行 `/nl-sdlc:test --base-url <测试环境地址>`。
+5. **测试**：编写 `tests/api/*.postman_collection.json` 与 `tests/e2e/*.spec.ts`（用例编写见 6.1），运行 `/nl-sdlc:test --base-url <测试环境地址>`（交互式，teams 并行；也可 `/nl-sdlc:test-flow --base-url <地址>` 走确定性流程）。
 6. **交付**：`/nl-sdlc:ship` 做最终质量门与测试 → CI 绿灯 → 人工批准合并。
 7. **镜像**：CI 的 docker stage 全绿后自动构建并推送镜像。
 
@@ -74,18 +85,26 @@ claude plugin install nl-sdlc@nl-sdlc-marketplace
 
 ---
 
-## 3. 需求阶段：`/nl-sdlc:requirement`
+## 3. 需求阶段：`/nl-sdlc:requirement-flow`
 
 **步骤：**
 
 1. 把需求文档（Markdown）放入 `docs/requirements/`。
-2. 运行：
+2. 运行（两种入口，二选一）：
 
    ```
-   /nl-sdlc:requirement 分析 docs/requirements/ 下文档
+   /nl-sdlc:指令
    ```
 
-   或指定文件：`/nl-sdlc:requirement 分析 docs/requirements/用户登录.md`
+   （架构设计入口——显式调用架构设计智能体，智能体自动跑需求流程；适合把设计工作整体交给智能体）
+
+   或直接跑 workflow：
+
+   ```
+   /nl-sdlc:requirement-flow 分析 docs/requirements/ 下文档
+   ```
+
+   或指定文件：`/nl-sdlc:requirement-flow 分析 docs/requirements/用户登录.md`
 
 3. 流程自动执行：需求分析 → 概要设计 → **3票质疑**（三个视角并行评审设计，≥2/3 通过才算过；每轮未过会修订设计重投，最多 3 轮投票/2 次修订）→ 详细设计 + 任务列表。
 
@@ -98,7 +117,7 @@ claude plugin install nl-sdlc@nl-sdlc-marketplace
 | 任务列表 | `docs/plans/<feature>/tasks.md` |
 
 **注意：**
-- **feature 名是分析 agent 自动生成的**（如"用户登录"），并直接用作 `docs/plans/<feature>/` 目录名——后续 `/nl-sdlc:development <feature>` 必须与之一致。跑完需求 workflow 后先看产物目录名，再决定开发命令的参数。
+- **feature 名是分析 agent 自动生成的**（如"用户登录"），并直接用作 `docs/plans/<feature>/` 目录名——后续 `/nl-sdlc:dev-flow <feature>` 必须与之一致。跑完需求 workflow 后先看产物目录名，再决定开发命令的参数。
 - 3 票质疑 3 轮仍不通过时，流程在会话中输出分歧报告并停下，需人工决策（报告是会话返回值，不落盘）。
 - `tasks.md` 的 frontmatter 含任务数组（依赖、验收标准、测试用例清单），是开发阶段的输入，不要手工删改字段。
 
@@ -106,10 +125,10 @@ claude plugin install nl-sdlc@nl-sdlc-marketplace
 
 ## 4. 开发阶段
 
-### 4.1 workflow 模式：`/nl-sdlc:development`
+### 4.1 workflow 模式：`/nl-sdlc:dev-flow`
 
 ```bash
-/nl-sdlc:development 用户登录
+/nl-sdlc:dev-flow 用户登录
 ```
 
 workflow 读取 `args.feature`（命令后的 feature 名），自动执行：按 tasks.md 逐任务编码 → 每个任务跑质量门（checkstyle → spotbugs → 覆盖率 → 安全扫描）→ 不过则打回修复（最多 2 轮）→ 全部过门后三视角评审。
@@ -143,6 +162,8 @@ bash scripts/quality-gate.sh --scope all        # 全量（默认）
 
 按 `nl-sdlc:code-review` 技能做五轴评审（正确性/可读性/架构/安全/测试充分性），输出分级问题清单（Critical/Major/Minor/Nit）。
 
+若启用了 agent-teams：生成 3 个 review 队友（正确性/安全/性能视角）**并行评审并互相质疑**对方发现，主会话合并为一份分级问题清单——比单视角评审更全面。
+
 **规则：** Critical 问题必须修复后才能进入人工批准环节；评审报告以 MR 评论或 `docs/reviews/` 形式留存。
 
 ### 5.2 交付：`/nl-sdlc:ship`
@@ -154,7 +175,7 @@ bash scripts/quality-gate.sh --scope all        # 全量（默认）
 
 ---
 
-## 6. 测试阶段：`/nl-sdlc:test`
+## 6. 测试阶段：`/nl-sdlc:test` 与 `/nl-sdlc:test-flow`
 
 ### 6.1 用例编写（按 `nl-sdlc:testing` 技能规范）
 
@@ -171,10 +192,20 @@ bash scripts/quality-gate.sh --scope all        # 全量（默认）
 - 文件名：`tests/e2e/<feature>.spec.ts`——**必须放在 `tests/e2e/` 顶层**（不递归匹配），**必须 `.spec.ts` 后缀**。
 - 每个用例必须可从 `baseUrl` 独立运行，不依赖执行顺序。
 
-### 6.2 执行
+### 6.2 执行（两个入口）
+
+**交互式（推荐，启用 teams 时并行）**：
 
 ```bash
 /nl-sdlc:test --base-url http://测试环境:8080
+```
+
+调用 testing skill；启用 agent-teams 时生成 test 队友并行执行接口/E2E，否则回退到下面的 workflow。
+
+**确定性流程**：
+
+```bash
+/nl-sdlc:test-flow --base-url http://测试环境:8080
 ```
 
 workflow 读取 `args.baseUrl`，自动执行：Newman 接口测试 → Playwright E2E（无头）→ 失败用例自动诊断（服务 bug 打回开发 / 用例问题修用例重跑，各最多 2 轮）。
@@ -254,9 +285,9 @@ bash scripts/run-tests.sh --api --e2e --base-url http://localhost:8080
 | E2E 失败但用例写对了 | 检查 `playwright.config.ts` 的 baseURL 是否读 `process.env.PLAYWRIGHT_BASE_URL`——否则 `--base-url` 不生效 |
 | 本地测试绿、CI 红 | 本地无用例文件时跳过不失败、CI 无匹配文件会失败（见 7.1）；确保用例已提交 |
 | 改了 quality-gate.yaml 不生效 | 确认文件在项目根；CI 侧阈值在 pom.xml jacoco rules / vitest 配置中，两处同步 |
-| agent-teams 队友卡住/失败 | 直接运行 `/nl-sdlc:development` 以 workflow 模式重跑（实验性功能的兜底路径） |
+| agent-teams 队友卡住/失败 | 直接运行 `/nl-sdlc:dev-flow` 以 workflow 模式重跑（实验性功能的兜底路径） |
 | 3票质疑一直不通过 | 查看会话中输出的分歧报告，按质疑修订需求/设计后重新运行 |
-| `/nl-sdlc:development 找不到任务` | feature 名与需求阶段产物目录名不一致——以 `docs/plans/` 下实际目录名为准 |
+| `/nl-sdlc:dev-flow 找不到任务` | feature 名与需求阶段产物目录名不一致——以 `docs/plans/` 下实际目录名为准 |
 | 覆盖率不达标 | 补齐单元测试；阈值调整改 `quality-gate.yaml`（CI 侧同步） |
 
 ---

@@ -1,5 +1,5 @@
 export const meta = {
-  name: 'requirement',
+  name: 'requirement-flow',
   description: '需求分析→概要设计(3票质疑)→详细设计+任务列表',
   phases: [
     { title: '分析' },
