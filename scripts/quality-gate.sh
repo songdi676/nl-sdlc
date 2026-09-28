@@ -99,9 +99,11 @@ run_backend() {
   else
     cov_status=fail; cov_hint="缺 target/site/jacoco/jacoco.csv，先运行 mvn test jacoco:report 生成覆盖率报告"
   fi
-  # Dependency-Check：本任务以脚本包装形式调用，详细扫描在 Task 19 模板中启用
-  local DC; DC=$(resolve dependency-check)
-  if [ -n "$DC" ] && ! "$DC" >/dev/null 2>&1; then dep_status=fail; fi
+  # Dependency-Check：与 CI 模板同命令（mvn dependency-check:check），保证"同命令同阈值"口径。
+  # pom.xml 未配置插件时 mvn 报错退出非 0 → 门失败（安全门从严，指引中说明配置方法）
+  if ! "$MVN" dependency-check:check >/dev/null 2>&1; then
+    dep_status=fail; dep_detail="依赖漏洞扫描未通过或未配置"; dep_sug='["运行 mvn dependency-check:check 查看明细；若报插件缺失，在 pom.xml 配置 org.owasp:dependency-check-maven 插件"]'
+  fi
 
   local overall=pass
   [ "$cs_status" = fail ] || [ "$sb_status" = fail ] || [ "$cov_status" = fail ] || [ "$dep_status" = fail ] && overall=fail

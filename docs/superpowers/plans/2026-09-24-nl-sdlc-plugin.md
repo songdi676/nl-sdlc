@@ -2317,6 +2317,6 @@ git commit -m "docs: 共享清单（DoD/安全/测试）+ README 安装与 CI �
 ## 完成标准（全部任务后）
 
 - [ ] `claude plugin validate .` 通过
-- [ ] 三个测试脚本全绿：quality-gate-test.sh（11）、run-tests-test.sh（4）、hooks-test.sh（6）
+- [ ] 三个测试脚本全绿：quality-gate-test.sh（15）、run-tests-test.sh（4）、hooks-test.sh（6）
 - [ ] `node scripts/validate-plugin.mjs` 报告 6 skills / 4 agents / 3 commands / 3 workflows
 - [ ] 在演示项目（Maven 后端 + Vue 前端）中完成一次端到端演练：`/nl-sdlc:requirement` → `/nl-sdlc:development` → `/nl-sdlc:test` → CI 模板跑通 → Docker 镜像构建成功

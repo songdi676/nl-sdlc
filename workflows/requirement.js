@@ -53,8 +53,9 @@ function tallyVotes(votes) {
 
 // ---- Phase 1: 分析 ----
 phase('分析')
+const fileArg = args && typeof args === 'string' ? args.trim() : '未指定'
 const reqFiles = await agent(
-  '列出 docs/requirements/ 目录下所有 .md 需求文档的路径（若 args 指定了文件名则只列该文件）。同时返回今天的日期（YYYY-MM-DD 格式，从你的系统时间读取）。无文档时 files 返回空数组。',
+  `列出 docs/requirements/ 目录下所有 .md 需求文档的路径；若用户指定了文件（用户输入: ${fileArg}，非"未指定"时从中提取文件名/路径），只列该文件。同时返回今天的日期（YYYY-MM-DD 格式，从你的系统时间读取）。无文档时 files 返回空数组。`,
   { label: 'list-requirements', schema: { type: 'object', required: ['files', 'today'], properties: { files: { type: 'array', items: { type: 'string' } }, today: { type: 'string' } } } },
 )
 if (!reqFiles || !reqFiles.files.length) {

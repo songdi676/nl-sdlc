@@ -13,7 +13,7 @@ AI Agent 驱动的 SDLC 全流程自动化插件：需求 → 编码 → 评审 
 
 ### 1.1 安装插件
 
-在项目仓库根目录执行：
+`marketplace.json` 位于**插件仓库**（本项目）的 `.claude-plugin/` 目录下——先 clone 插件仓库（或按团队分发方式获取其副本），在插件仓库根目录执行：
 
 ```bash
 claude plugin marketplace add .claude-plugin/marketplace.json
@@ -37,13 +37,13 @@ claude plugin install nl-sdlc@nl-sdlc-marketplace
 
 插件脚本不会自动出现在业务项目里，需要把以下文件复制进项目（建议用 git submodule 或统一的分发脚本管理插件仓库）：
 
-| 复制到项目根的文件 | 用途 |
+| 复制到业务项目 | 用途与注意 |
 |---|---|
-| `scripts/quality-gate.sh` | 质量门脚本（本手册所有 `bash scripts/...` 命令的前提） |
-| `scripts/run-tests.sh` | 测试执行脚本 |
-| `templates/config/quality-gate.yaml` | 阈值配置（复制到项目根后自动生效，见 4.3） |
-| `templates/ci/`（按 CI 系统选一个） | 流水线模板（见 7.1） |
-| `templates/docker/` | Dockerfile 模板（见 7.2，目录结构原位保留） |
+| `scripts/quality-gate.sh` → 项目根 `scripts/` | 质量门脚本（本手册所有 `bash scripts/...` 命令的前提） |
+| `scripts/run-tests.sh` → 项目根 `scripts/` | 测试执行脚本 |
+| `templates/config/quality-gate.yaml` → 项目根 | 阈值配置（自动生效，见 4.3） |
+| `templates/ci/` 按 CI 系统选一个 | 需改名/移位：GitLab → 项目根 `.gitlab-ci.yml`；Jenkins → 项目根 `Jenkinsfile`；GHA → `.github/workflows/` |
+| `templates/docker/` | Dockerfile 模板（见 7.2，**目录结构原位保留**，不拍平） |
 
 （hooks 不需要复制：插件安装后由 Claude Code 自动从插件目录加载。）
 
@@ -52,8 +52,8 @@ claude plugin install nl-sdlc@nl-sdlc-marketplace
 **机器侧**：Windows 使用 Git Bash 执行脚本命令；`node`、`mvn`、`npm` 在 PATH 中。
 
 **项目侧**：
-- 后端 `pom.xml`：配置 checkstyle（阿里 P3C 规则）、spotbugs（含 FindSecBugs）、jacoco rules（行覆盖率 ≥ 80%）。
-- 前端 `package.json`：含 `lint` script；Vitest 配置覆盖率阈值 ≥ 70% 且 `coverage` reporter 含 `json-summary`。
+- 后端 `pom.xml`：配置 checkstyle（阿里 P3C 规则）、spotbugs（含 FindSecBugs）、jacoco rules（行覆盖率 ≥ 80%）、dependency-check-maven 插件（org.owasp，本地与 CI 都用 `mvn dependency-check:check`）。
+- 前端 `package.json`：含 `lint` script；Vitest 配置覆盖率阈值 ≥ 70% 且 `coverage` reporter 含 `json-summary`；`package-lock.json` 需入库（CI 用 `npm ci`）。
 - `playwright.config.ts`：`baseURL` 读 `process.env.PLAYWRIGHT_BASE_URL`（`--base-url` 参数通过该环境变量传递）。
 
 ---
@@ -118,7 +118,7 @@ workflow 读取 `args.feature`（命令后的 feature 名），自动执行：�
 
 适合手工推进：agent 按 `nl-sdlc:coding` 技能做 TDD 编码，每任务完成前跑 `bash scripts/quality-gate.sh`，全绿才提交。
 
-若启用了 agent-teams：主会话会生成 dev 队友并行认领任务；队友收工前 TeammateIdle hook 强制跑质量门，未过门自动打回继续修。
+若启用了 agent-teams：主会话会生成 dev 队友并行认领任务；队友收工前 TeammateIdle hook 强制跑质量门，未过门自动打回继续修。**注意**：hook 固定跑 `--scope all`——单仓（前后端同仓）时队友只改后端，也可能因前端尚未生成覆盖率报告被打回；两侧的覆盖率报告都要先生成好。
 
 ### 4.3 手动跑质量门
 
@@ -131,7 +131,7 @@ bash scripts/quality-gate.sh --scope all        # 全量（默认）
 - 必须在含 `pom.xml`（后端）或 `package.json`（前端）的目录执行。
 - 退出码：`0`=通过；`1`=有门不过；`2`=环境/配置错误（不在项目目录、mvn/npm 缺失、非法参数）。
 - **注意退出码 2 的双层语义**：脚本 exit 2 = 环境问题（TeammateIdle/TaskCompleted hook 遇到它会放行）；hook exit 2 = 打回/阻止完成。看到"exit 2"先分清是哪个层级。
-- 失败详情看 stdout 的 JSON：`checks[].details` 与 `checks[].suggestions` 给修复指引；覆盖率失败看 `coverage.hint`。
+- 失败详情看 stdout 的 JSON：`checks[].details` 与 `checks[].suggestions` 给修复指引；覆盖率失败看 `coverage.hint`。**前后端同仓（monorepo）时报告是嵌套形态**：顶层只有 `overall/backend/frontend`，`checks` 与 `coverage` 在各子对象下（如 `backend.checks[]`）。
 - **先跑覆盖率报告**：脚本只读现成报告，不生成——后端先 `mvn test jacoco:report`（生成 `target/site/jacoco/jacoco.csv`），前端先 `npx vitest run --coverage`（生成 `coverage/coverage-summary.json`），否则覆盖率门必然失败。
 - 阈值：Java 行覆盖率 ≥80%、Vue ≥70%。修改项目根的 `quality-gate.yaml` 后自动生效（脚本默认查找项目根 `quality-gate.yaml`，其次 `templates/config/quality-gate.yaml`；也可 `--thresholds <文件>` 显式指定）。注意 CI 侧阈值在 pom.xml jacoco rules / vitest 配置中，两处保持同步。
 
@@ -207,7 +207,7 @@ bash scripts/run-tests.sh --api --e2e --base-url http://localhost:8080
 
 **注意：**
 - CI 模板内联命令与插件脚本判定口径一致（同命令同阈值）；CI 不自动改代码。
-- **本地与 CI 对"无用例"的态度不同**：`run-tests.sh` 无 collection/spec 时跳过并 warning（退出码 0），而 CI 模板直接跑 `newman run tests/api/*.json` / `npx playwright test`，无匹配文件会失败。上线前确保用例文件已提交。
+- **本地与 CI 对"无用例"的态度不同**：`run-tests.sh` 无 collection/spec 时跳过并 warning（退出码 0），而 CI 模板直接跑 `newman run tests/api/*.postman_collection.json` / `npx playwright test`，无匹配文件会失败。上线前确保用例文件已提交。
 - `ai-report` job：**仅 GitLab 模板**有（默认注释掉，启用需配置 `ANTHROPIC_API_KEY`）；Jenkins 模板只有一行注释掉的凭据声明（启用前先在 Jenkins 建 Secret text 凭据 `anthropic-api-key`）；GHA 模板没有此 job。
 - 推送地址与凭据按团队仓库调整（GHA 用 ghcr.io 时仓库名需小写）。
 
@@ -218,6 +218,8 @@ bash scripts/run-tests.sh --api --e2e --base-url http://localhost:8080
 - **构建约定**：以**项目根为构建上下文** + `-f templates/docker/Dockerfile.*`；`templates/` 目录结构原位保留，不要拍平、不要只复制 Dockerfile 到别处。
 - 注意 `.dockerignore`：若项目配置了它，确保没有排除 `templates/`。
 - 镜像标签（三套 CI 口径不同）：GitLab `:{tag 或短 commit}`；Jenkins `:{BUILD_NUMBER}-{commit 前 7 位}`；GHA `:{分支名}-{commit 完整 sha}`。
+- **docker stage 仅在 main 分支/tag 触发**（GitLab `only: [main, tags]`、Jenkins `when { branch 'main' }`、GHA `if: refs/heads/main`）——MR 上不会出镜像，合并到 main 后才有。
+- `Dockerfile.java` 假定**单模块 Maven**（`COPY pom.xml` + `COPY src` + 单个 `target/*.jar`）；多模块项目需自行调整。
 
 ---
 

@@ -46,7 +46,7 @@ description: Use when implementing any task from docs/plans/<feature>/tasks.md i
 | 覆盖率 | `npx vitest run --coverage` | ≥ 70% |
 | 依赖安全 | `npm audit --audit-level=high` | 无高危 |
 
-阈值默认值可被 `templates/config/quality-gate.yaml` 覆盖；quality-gate.sh 在阈值文件缺失或含非法值时回退内置默认值并在报告加 warning，此时按 warning 提示修正配置，不得假装没看见。
+阈值默认值（Java 80 / Vue 70）可被项目根的 `quality-gate.yaml` 覆盖（脚本自动查找项目根 `quality-gate.yaml`，其次 `templates/config/quality-gate.yaml`，也可 `--thresholds <文件>` 显式指定）；quality-gate.sh 在显式指定的阈值文件缺失时回退内置默认值并在报告 warnings 注明，此时按 warning 提示修正配置，不得假装没看见。
 
 ## Red Flags
 

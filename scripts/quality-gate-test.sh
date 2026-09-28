@@ -153,6 +153,15 @@ if [ $? -eq 1 ] && echo "$out" | grep -q 'mvn test jacoco:report 生成覆盖率
 else FAIL=$((FAIL+1)); echo "FAIL - 缺覆盖率报告应含 hint 指引 (out: $out)"; fi
 rm -rf "$S_NOCOV"
 
+# 测试 15：dependency-check 失败（mvn dependency-check:check 退出非 0）→ fail + 真实指引文案
+S_DC=$(mktemp -d)
+printf '#!/bin/bash\nif [ "$1" = "dependency-check:check" ]; then exit 1; fi\nexit 0\n' > "$S_DC/mvn"
+chmod +x "$S_DC/mvn"
+out=$(cd target-stub-projects/backend && bash "$QG" --stub-dir "$S_DC" --scope backend 2>/dev/null)
+if [ $? -eq 1 ] && echo "$out" | grep -q '依赖漏洞扫描未通过或未配置' && echo "$out" | grep -q 'dependency-check-maven'; then PASS=$((PASS+1)); echo "ok - dependency-check 失败真实指引"
+else FAIL=$((FAIL+1)); echo "FAIL - dependency-check 失败应含真实指引 (out: $out)"; fi
+rm -rf "$S_DC"
+
 rm -rf "$S_ALL" "$S_CS" "$S_EMPTY"
 echo "$PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
