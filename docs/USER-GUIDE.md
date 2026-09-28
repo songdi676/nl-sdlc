@@ -5,7 +5,7 @@ AI Agent 驱动的 SDLC 全流程自动化插件：需求 → 编码 → 评审 
 
 适用技术栈：Java（Maven）+ Vue 3（Vite + TypeScript）。
 
-**术语速览**：`-flow` 结尾的是 workflow（确定性的自动化流程，由插件自动注册为命令）：`/nl-sdlc:requirement-flow`、`/nl-sdlc:dev-flow`、`/nl-sdlc:test-flow`；其余是交互式薄壳命令，背后是 skill（指导 agent 工作的规范）与 agent（角色智能体）：`/nl-sdlc:指令`（架构设计入口，显式调用架构设计智能体 → 智能体跑 requirement-flow）、`/nl-sdlc:code`、`/nl-sdlc:review`、`/nl-sdlc:test`、`/nl-sdlc:ship`；agent-teams 是实验性的多会话并行协作（code/review/test 启用后自动使用）。
+**术语速览**：`-flow` 结尾的是 workflow（确定性的自动化流程，由插件自动注册为命令）：`/nl-sdlc:requirement-flow`、`/nl-sdlc:dev-flow`、`/nl-sdlc:test-flow`；其余是交互式薄壳命令，背后是 skill（指导 agent 工作的规范）与 agent（角色智能体）：`/nl-sdlc:design`（架构设计入口，显式调用架构设计智能体 → 智能体跑 requirement-flow）、`/nl-sdlc:code`、`/nl-sdlc:review`、`/nl-sdlc:test`、`/nl-sdlc:ship`；agent-teams 是实验性的多会话并行协作（code/review/test 启用后自动使用）。
 
 ---
 
@@ -20,7 +20,7 @@ claude plugin marketplace add ./.claude-plugin/marketplace.json
 claude plugin install nl-sdlc@nl-sdlc-marketplace
 ```
 
-安装后可用命令：`/nl-sdlc:指令`、`/nl-sdlc:requirement-flow`、`/nl-sdlc:dev-flow`、`/nl-sdlc:test-flow`、`/nl-sdlc:code`、`/nl-sdlc:review`、`/nl-sdlc:test`、`/nl-sdlc:ship`。
+安装后可用命令：`/nl-sdlc:design`、`/nl-sdlc:requirement-flow`、`/nl-sdlc:dev-flow`、`/nl-sdlc:test-flow`、`/nl-sdlc:code`、`/nl-sdlc:review`、`/nl-sdlc:test`、`/nl-sdlc:ship`。
 
 ### 1.1.1 升级插件（已安装旧版时）
 
@@ -74,7 +74,7 @@ claude plugin update nl-sdlc@nl-sdlc-marketplace   # 若 update 不可用，重�
 以"用户登录"为例：
 
 1. **准备**：完成第 1 章安装与资产落地；把需求写入 `docs/requirements/用户登录.md`（目录必须存在且非空，否则 workflow 直接终止）。
-2. **需求**：运行 `/nl-sdlc:指令`（显式调用架构设计智能体，智能体会跑需求流程；也可直接 `/nl-sdlc:requirement-flow 分析 docs/requirements/ 下文档`）→ 产出概要设计（3票质疑通过）、详细设计、`docs/plans/用户登录/tasks.md`。注意 feature 名由分析 agent 生成，后续命令要引用它（见 3）。
+2. **需求**：运行 `/nl-sdlc:design`（显式调用架构设计智能体，智能体会跑需求流程；也可直接 `/nl-sdlc:requirement-flow 分析 docs/requirements/ 下文档`）→ 产出概要设计（3票质疑通过）、详细设计、`docs/plans/用户登录/tasks.md`。注意 feature 名由分析 agent 生成，后续命令要引用它（见 3）。
 3. **开发**：`/nl-sdlc:dev-flow 用户登录`（workflow 模式）或交互式编码；质量门不过自动打回修复。
 4. **评审**：`/nl-sdlc:review`；人工在 MR 上批准。
 5. **测试**：编写 `tests/api/*.postman_collection.json` 与 `tests/e2e/*.spec.ts`（用例编写见 6.1），运行 `/nl-sdlc:test --base-url <测试环境地址>`（交互式，teams 并行；也可 `/nl-sdlc:test-flow --base-url <地址>` 走确定性流程）。
@@ -93,7 +93,7 @@ claude plugin update nl-sdlc@nl-sdlc-marketplace   # 若 update 不可用，重�
 2. 运行（两种入口，二选一）：
 
    ```
-   /nl-sdlc:指令
+   /nl-sdlc:design
    ```
 
    （架构设计入口——显式调用架构设计智能体，智能体自动跑需求流程；适合把设计工作整体交给智能体）

@@ -23,7 +23,7 @@ description: Use when starting any SDLC work in this repo - routes the task to t
 
 | 用户意图 | 调用 |
 |---|---|
-| 分析新需求 / 出设计 / 拆任务 | 用户可用 `/nl-sdlc:指令`（显式调用架构设计智能体），智能体会跑 `/nl-sdlc:requirement-flow` workflow |
+| 分析新需求 / 出设计 / 拆任务 | 用户可用 `/nl-sdlc:design`（显式调用架构设计智能体），智能体会跑 `/nl-sdlc:requirement-flow` workflow |
 | 按任务编码 / 修复打回问题 | 本 skill 的「编码」节 → `nl-sdlc:coding` skill |
 | 评审代码 / 安全审查 | `/nl-sdlc:review` 命令 → `nl-sdlc:code-review` skill（启用 teams 时三视角并行互搏） |
 | 接口测试 / E2E / 修测试用例 | `/nl-sdlc:test` 命令（teams 并行）或 `/nl-sdlc:test-flow` workflow |

@@ -23,7 +23,7 @@ Windows 使用 in-process 模式。团队协作失败时回退：直接运行 `/
 
 | 命令 | 作用 |
 |---|---|
-| `/nl-sdlc:指令` | 架构设计入口：显式调用架构设计智能体 → 智能体跑 `/nl-sdlc:requirement-flow` |
+| `/nl-sdlc:design` | 架构设计入口：显式调用架构设计智能体 → 智能体跑 `/nl-sdlc:requirement-flow` |
 | `/nl-sdlc:requirement-flow` | 需求分析 → 概要设计（3票质疑，2/3 通过）→ 详细设计 + tasks.md |
 | `/nl-sdlc:dev-flow` | 按 tasks.md 编码 → 质量门打回循环 → 三视角评审 |
 | `/nl-sdlc:test-flow` | Newman 接口测试 + Playwright E2E，失败诊断与修复 |

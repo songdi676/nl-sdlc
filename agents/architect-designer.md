@@ -23,5 +23,5 @@ description: Use when the task needs architecture design or when a requirement d
 ## Composition
 
 - Invoke directly when: 需要把需求文档转化为设计文档与任务列表（架构设计类任务）
-- Invoke via: `/nl-sdlc:指令`
+- Invoke via: `/nl-sdlc:design`
 - Do not invoke from another persona
