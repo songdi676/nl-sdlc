@@ -7,6 +7,26 @@ AI Agent 驱动的 SDLC 全流程自动化插件：需求 → 编码 → 评审 
 
 **术语速览**：`-flow` 结尾的是自动化流程命令：`/nl-sdlc:requirement-flow`、`/nl-sdlc:test-flow` 是确定性 workflow；`/nl-sdlc:dev-flow` 由主 agent 编排、按依赖分层并行调度 `dev-task` 单任务 workflow（worktree 隔离）；其余是交互式薄壳命令，背后是 skill（指导 agent 工作的规范）与 agent（角色智能体）：`/nl-sdlc:design`（架构设计入口，显式调用架构设计智能体 → 智能体跑 requirement-flow）、`/nl-sdlc:code`、`/nl-sdlc:review`、`/nl-sdlc:test`、`/nl-sdlc:ship`；agent-teams 是实验性的多会话并行协作（code/review/test 启用后自动使用）。
 
+**执行机制速览**：Claude Code 运行多步骤任务有四种机制，区别在于**谁掌握计划**：
+
+| | 子代理 | Skills | Agent teams | 工作流 |
+|---|---|---|---|---|
+| 它是什么 | Claude 生成的工作者 | Claude 遵循的指令 | 监督对等会话的主导代理 | 运行时执行的脚本 |
+| 谁决定接下来运行什么 | Claude，逐轮 | Claude，遵循提示 | 主导代理，逐轮 | 脚本 |
+| 中间结果在哪里 | Claude 的上下文窗口 | Claude 的上下文窗口 | 共享任务列表 | 脚本变量 |
+| 什么是可重复的 | 工作者定义 | 指令 | 团队定义 | 编排本身 |
+| 规模 | 每轮几个委派任务 | 与子代理相同 | 少数几个长期运行的对等体 | 每次运行数十到数百个代理 |
+| 中断 | 重启轮次 | 重启轮次 | 队友继续运行 | 在同一会话中可恢复 |
+
+前三种机制里 Claude 是编排者：它逐轮决定接下来生成或分配什么，每个中间结果都进入上下文窗口；**工作流把计划移入代码**——脚本持有循环、分支和中间结果本身，Claude 的上下文只保留最终答案。本插件的对应关系：
+
+| 机制 | 本插件中的用途 |
+|---|---|
+| 工作流（确定性） | `requirement-flow`、`test-flow`、`dev-task`（单任务）；`dev-flow` 由主 agent 逐层编排、并行启动 dev-task |
+| Agent teams（实验性） | 启用 teams 后，`code` / `review` / `test` 由队友并行执行 |
+| Skill（工作规范） | `code`（coding）、`review`（code-review）、`test`（testing）背后的执行规范 |
+| 子代理 | 架构设计智能体（`design` 显式调用）、各 flow 内部的分析 / 质疑 / 开发 / 评审 agent |
+
 ---
 
 ## 1. 插件安装与启用
