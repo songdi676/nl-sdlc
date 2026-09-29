@@ -28,7 +28,15 @@ const FIX_SCHEMA = {
   },
 }
 
-const baseUrl = args && args.baseUrl ? args.baseUrl : ''
+// args 兼容两种形态：斜杠命令传入的字符串（`/nl-sdlc:test-flow --base-url http://host:8080`），
+// 或 Workflow 工具显式传入的对象（args={baseUrl:"http://host:8080"}）。
+let baseUrl = ''
+if (args && typeof args === 'string') {
+  const m = args.match(/--base-url\s+(\S+)/)
+  if (m) baseUrl = m[1]
+} else if (args && typeof args === 'object' && args.baseUrl) {
+  baseUrl = String(args.baseUrl)
+}
 const baseArg = baseUrl ? ' --base-url ' + baseUrl : ''
 
 // ---- Phase 1: 接口测试 ----

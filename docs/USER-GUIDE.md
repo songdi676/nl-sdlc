@@ -131,7 +131,7 @@ claude plugin update nl-sdlc@nl-sdlc-marketplace   # 若 update 不可用，重�
 /nl-sdlc:dev-flow 用户登录
 ```
 
-workflow 读取 `args.feature`（命令后的 feature 名），自动执行：按 tasks.md 逐任务编码 → 每个任务跑质量门（checkstyle → spotbugs → 覆盖率 → 安全扫描）→ 不过则打回修复（最多 2 轮）→ 全部过门后三视角评审。
+workflow 读取命令后的 feature 名，按 tasks.md 的 `deps` 依赖关系并行开发：无依赖的任务并行编码；每个任务编码完成后**立即**跑质量门（checkstyle → spotbugs → 覆盖率 → 安全扫描）→ 不过则打回修复（最多 2 轮）→ 过门即触发三视角评审（与下一层任务的开发并行）。不涉及代码的任务（纯文档/说明类）跳过质量门与评审。依赖任务需等前置任务的「编码+质量门」都完成才开工。
 
 ### 4.2 交互式模式：`/nl-sdlc:code`
 
@@ -208,7 +208,7 @@ bash scripts/quality-gate.sh --scope all        # 全量（默认）
 /nl-sdlc:test-flow --base-url http://测试环境:8080
 ```
 
-workflow 读取 `args.baseUrl`，自动执行：Newman 接口测试 → Playwright E2E（无头）→ 失败用例自动诊断（服务 bug 打回开发 / 用例问题修用例重跑，各最多 2 轮）。
+workflow 读取命令后的 `--base-url <url>` 参数，自动执行：Newman 接口测试 → Playwright E2E（无头）→ 失败用例自动诊断（服务 bug 打回开发 / 用例问题修用例重跑，各最多 2 轮）。
 
 ### 6.3 手动跑测试
 
