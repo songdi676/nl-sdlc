@@ -96,41 +96,62 @@ if (levels.reduce((n, l) => n + l.length, 0) < tasks.length) {
 // ---- 工具函数 ----
 const MAX_FIX_ROUNDS = 2
 
+// agent() 在 API 错误（如上下文超长 500）时会直接 reject；若不捕获，单个任务的
+// 异常会沿 parallel 冒泡、杀死整个 run。统一转为 {result:null, error}，
+// 由调用方把该任务标记为 failed 并继续，错误摘要进最终报告。
+async function safeAgent(prompt, opts) {
+  try {
+    return { result: await agent(prompt, opts), error: null }
+  } catch (e) {
+    const msg = e && e.message ? e.message : String(e)
+    log(`${(opts && opts.label) || 'agent'} 执行失败：${msg}`)
+    return { result: null, error: msg }
+  }
+}
+
+// 上下文预算纪律：长构建/测试输出必须先落盘再 tail，防止转录膨胀撞爆模型上下文上限。
+const CONTEXT_BUDGET_RULE = '上下文预算纪律（必须遵守）：mvn/npm/pnpm 等构建、测试、质量门的长输出一律先重定向到文件再只取尾部（如 mvn -q test > .build.log 2>&1 && tail -n 40 .build.log），禁止把超长输出直接留在对话里，也禁止 cat 大文件（用 Read 的 offset/limit 只读相关片段）。'
+
 async function devAgent(t) {
-  const dev = await agent(
-    `你是 dev-engineer，遵循 nl-sdlc:coding skill 实现任务。\n任务: ${JSON.stringify(t)}\nfeature: ${taskDoc.feature}\n详细设计: docs/plans/${taskDoc.feature}/详细设计.md\n\n完成后判断：本任务是否产生了会影响质量门（编译/静态检查/覆盖率）的代码或构建配置改动？是则 touched_code=true，否则（纯文档/说明类）false；并把改动文件列到 changed_files。`,
+  const { result: dev, error } = await safeAgent(
+    `你是 dev-engineer，遵循 nl-sdlc:coding skill 实现任务。\n任务: ${JSON.stringify(t)}\nfeature: ${taskDoc.feature}\n详细设计: docs/plans/${taskDoc.feature}/详细设计.md\n\n${CONTEXT_BUDGET_RULE}\n\n完成后判断：本任务是否产生了会影响质量门（编译/静态检查/覆盖率）的代码或构建配置改动？是则 touched_code=true，否则（纯文档/说明类）false；并把改动文件列到 changed_files。`,
     { label: 'dev-' + t.id, phase: '编码', schema: DEV_SCHEMA },
   )
-  return { id: t.id, dev }
+  return { id: t.id, dev, error }
 }
 
 async function gateAgent(id, round) {
-  return agent(
-    `运行 bash scripts/quality-gate.sh --scope all，把 stdout 的 JSON 报告原样返回（含 overall）。（workflow 判定一律全量 --scope all；编码期自检可用 --scope 单侧，两者不矛盾。）`,
+  const { result, error } = await safeAgent(
+    `运行 bash scripts/quality-gate.sh --scope all，把 stdout 的 JSON 报告原样返回（含 overall）。（workflow 判定一律全量 --scope all；编码期自检可用 --scope 单侧，两者不矛盾。）${CONTEXT_BUDGET_RULE}`,
     { label: 'gate-' + id + (round ? '-r' + round : ''), phase: '质量门', schema: GATE_SCHEMA },
   )
+  return { report: result, error }
 }
 
 async function gateWithFix(id) {
-  let gate = await gateAgent(id, 0)
+  let g = await gateAgent(id, 0)
+  let gate = g.report
+  let gateError = g.error
   let rounds = 0
   while (gate && gate.overall === 'fail' && rounds < MAX_FIX_ROUNDS) {
-    await agent(
+    await safeAgent(
       `质量门失败，按失败详情修复任务 ${id} 的代码（遵循 nl-sdlc:coding skill，修复后运行相关测试）。失败详情: ${JSON.stringify(gate)}`,
       { label: 'fix-' + id + '-r' + (rounds + 1), phase: '质量门' },
     )
-    gate = await gateAgent(id, rounds + 1)
+    g = await gateAgent(id, rounds + 1)
+    gate = g.report
+    gateError = g.error
     rounds++
   }
-  return { gate, failed: !gate || gate.overall === 'fail', fixRounds: rounds }
+  return { gate, gateError, failed: !gate || gate.overall === 'fail', fixRounds: rounds }
 }
 
 async function reviewTask(id) {
   const t = byId.get(id)
   const reviews = await parallel([
-    () => agent(`你是 code-reviewer，遵循 nl-sdlc:code-review skill 评审任务 ${id}（${t.title}）的变更，对照其验收标准 ${JSON.stringify(t.acceptance)} 输出分级问题报告。`, { label: 'review-correctness-' + id, phase: '评审' }),
-    () => agent(`你是 security-auditor，对任务 ${id}（${t.title}）的变更做安全审查（OWASP Top 10），输出发现清单。（此步即 spec §6.1 质量门"AI security-auditor 代码审查"部分的执行点，与脚本门的 Dependency-Check 共同构成完整安全门。）`, { label: 'review-security-' + id, phase: '评审' }),
-    () => agent(`你是 code-reviewer，从可读性与架构视角评审任务 ${id}（${t.title}）的变更，输出分级问题报告。`, { label: 'review-architecture-' + id, phase: '评审' }),
+    () => safeAgent(`你是 code-reviewer，遵循 nl-sdlc:code-review skill 评审任务 ${id}（${t.title}）的变更，对照其验收标准 ${JSON.stringify(t.acceptance)} 输出分级问题报告。`, { label: 'review-correctness-' + id, phase: '评审' }).then((r) => ({ perspective: 'correctness', ...r })),
+    () => safeAgent(`你是 security-auditor，对任务 ${id}（${t.title}）的变更做安全审查（OWASP Top 10），输出发现清单。（此步即 spec §6.1 质量门"AI security-auditor 代码审查"部分的执行点，与脚本门的 Dependency-Check 共同构成完整安全门。）`, { label: 'review-security-' + id, phase: '评审' }).then((r) => ({ perspective: 'security', ...r })),
+    () => safeAgent(`你是 code-reviewer，从可读性与架构视角评审任务 ${id}（${t.title}）的变更，输出分级问题报告。`, { label: 'review-architecture-' + id, phase: '评审' }).then((r) => ({ perspective: 'architecture', ...r })),
   ])
   return { task: id, reviews }
 }
@@ -156,8 +177,9 @@ for (const level of levels) {
   const toGate = []
   for (let i = 0; i < level.length; i++) {
     const id = level[i]
-    const dev = devDone[i] ? devDone[i].dev : null
-    if (!dev) { taskResults.set(id, { task: id, dev: null, failed: true, skipped: false }); continue }
+    const d = devDone[i] || null
+    const dev = d ? d.dev : null
+    if (!dev) { taskResults.set(id, { task: id, dev: null, failed: true, skipped: false, devError: (d && d.error) || 'no-result' }); continue }
     devById.set(id, dev)
     if (!dev.touched_code) { taskResults.set(id, { task: id, dev, failed: false, skipped: true, skipReason: 'no-code' }); continue }
     toGate.push(id)
@@ -170,7 +192,7 @@ for (const level of levels) {
     const g = gateResults[i]
     const gate = g ? g.gate : null
     const failed = g ? g.failed : true
-    taskResults.set(id, { task: id, dev: devById.get(id), gate, failed, skipped: false, fixRounds: g ? g.fixRounds : 0 })
+    taskResults.set(id, { task: id, dev: devById.get(id), gate, failed, skipped: false, fixRounds: g ? g.fixRounds : 0, gateError: g ? g.gateError : 'no-result' })
     if (!failed) pendingReviews.push(() => reviewTask(id))
   }
 }
