@@ -34,7 +34,7 @@ description: Use when starting any SDLC work in this repo - routes the task to t
 | 阶段 | skill | workflow 命令 |
 |---|---|---|
 | 需求 | `nl-sdlc:requirement-analysis` | `/nl-sdlc:requirement-flow` |
-| 编码 | `nl-sdlc:coding` | `/nl-sdlc:dev-flow`（批量） |
+| 编码 | `nl-sdlc:coding` | `/nl-sdlc:dev-flow`（批量：主 agent 编排 + worktree 隔离并行调度 dev-task） |
 | 评审 | `nl-sdlc:code-review` | — |
 | 测试 | `nl-sdlc:testing` | `/nl-sdlc:test-flow` |
 | 交付 | `nl-sdlc:delivery` | — |
@@ -54,7 +54,7 @@ description: Use when starting any SDLC work in this repo - routes the task to t
 3. 每个任务完成前运行 `bash scripts/quality-gate.sh`，未过门必须修复，禁止提交未过门代码
 4. 若启用 agent-teams（`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`）：从 tasks.md 建共享任务列表，生成 dev 队友并行认领，质量门由 TeammateIdle hook 强制。评审时生成 3 个 review 队友（正确性/安全/性能视角）并行互搏；测试时生成 test 队友并行执行接口/E2E
 
-批量开发（非交互式跑完整批任务）改跑 `/nl-sdlc:dev-flow` workflow，它同样按 tasks.md 编码并执行质量门打回循环。
+批量开发（非交互式跑完整批任务）跑 `/nl-sdlc:dev-flow <feature>`：主 agent 读 tasks.md 按依赖分层，worktree 隔离并行调度 `dev-task` 单任务 workflow（内部含 TDD 编码、质量门打回循环、三视角评审），逐层合回后收尾全量门。
 
 ## Red Flags
 

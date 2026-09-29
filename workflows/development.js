@@ -1,41 +1,13 @@
 export const meta = {
-  name: 'dev-flow',
-  description: '按 tasks.md 编码→质量门打回循环→三视角评审（按依赖并行）',
+  name: 'dev-task',
+  description: '单任务开发单元：worktree 内 TDD 编码→质量门打回循环→三视角评审（由 /nl-sdlc:dev-flow 主 agent 按依赖分层并行调度）',
   phases: [
-    { title: '任务读取' },
     { title: '编码' },
     { title: '质量门' },
     { title: '评审' },
   ],
 }
 
-const TASKS_SCHEMA = {
-  type: 'object',
-  required: ['feature', 'tasks'],
-  properties: {
-    feature: { type: 'string' },
-    error: { type: 'string' },
-    tasks: {
-      type: 'array',
-      items: {
-        type: 'object',
-        required: ['id', 'title', 'acceptance', 'test_cases'],
-        properties: {
-          id: { type: 'string' },
-          title: { type: 'string' },
-          deps: { type: 'array', items: { type: 'string' } },
-          acceptance: { type: 'array', items: { type: 'string' } },
-          test_cases: { type: 'array', items: { type: 'string' } },
-        },
-      },
-    },
-  },
-}
-const GATE_SCHEMA = {
-  type: 'object',
-  required: ['overall'],
-  properties: { overall: { type: 'string', enum: ['pass', 'fail'] } },
-}
 const DEV_SCHEMA = {
   type: 'object',
   required: ['touched_code', 'summary'],
@@ -43,62 +15,35 @@ const DEV_SCHEMA = {
     touched_code: { type: 'boolean' },
     changed_files: { type: 'array', items: { type: 'string' } },
     summary: { type: 'string' },
+    error: { type: 'string' },
   },
 }
-
-// ---- Phase 1: 任务读取 ----
-phase('任务读取')
-// args 可能是斜杠命令传入的字符串（`/nl-sdlc:dev-flow 用户登录` → args="用户登录"），
-// 也可能是 Workflow 工具显式传入的对象（args={feature:"用户登录"}）；两种形态都兼容，
-// 否则 featureArg 恒为「未指定」导致 feature 名丢失（与 requirement.js 的字符串处理保持一致）。
-let featureArg = '未指定'
-if (args && typeof args === 'string' && args.trim()) featureArg = args.trim()
-else if (args && typeof args === 'object' && args.feature) featureArg = String(args.feature)
-const taskDoc = await agent(
-  `读取 docs/plans/ 下目标 feature 的 tasks.md。用户指定的 feature 名：${featureArg}；若为 未指定 则自动选择 docs/plans/ 下唯一（或最近创建的）feature。解析其 YAML frontmatter，返回 feature 名与 tasks 数组。若文件缺失或 frontmatter 缺 tasks 字段，必须返回 {feature:'', tasks:[], error:'<缺失的路径与字段>'} 形态（error 写具体缺失路径与字段），不得编造任务。`,
-  { label: 'read-tasks', schema: TASKS_SCHEMA, phase: '任务读取' },
-)
-if (!taskDoc || !taskDoc.tasks || !taskDoc.tasks.length) {
-  // 错误形态 {feature:'', tasks:[], error:...} 满足 schema（error 未入 required，tasks 可为空数组），此分支原样透出具体缺失路径与字段
-  return { result: 'no-tasks', error: taskDoc && taskDoc.error ? taskDoc.error : 'tasks.md 无任务或不可解析' }
+const GATE_SCHEMA = {
+  type: 'object',
+  required: ['overall'],
+  properties: { overall: { type: 'string', enum: ['pass', 'fail'] } },
 }
-const tasks = taskDoc.tasks.map((t) => ({ ...t, deps: t.deps || [] }))
-const byId = new Map(tasks.map((t) => [t.id, t]))
-log(`共 ${tasks.length} 个任务`)
 
-// ---- 依赖拓扑分层（Kahn）----
-const missingDeps = tasks.flatMap((t) => t.deps.filter((d) => !byId.has(d)))
-if (missingDeps.length) {
-  return { result: 'error', feature: taskDoc.feature, error: 'tasks.md 中存在不存在的依赖 id：' + [...new Set(missingDeps)].join(', ') }
-}
-const levels = []
-const inDegree = new Map(tasks.map((t) => [t.id, t.deps.length]))
-const children = new Map(tasks.map((t) => [t.id, []]))
-for (const t of tasks) for (const d of t.deps) children.get(d).push(t.id)
-let frontier = tasks.filter((t) => t.deps.length === 0).map((t) => t.id)
-while (frontier.length) {
-  levels.push(frontier)
-  const next = []
-  for (const id of frontier) {
-    for (const c of children.get(id)) {
-      inDegree.set(c, inDegree.get(c) - 1)
-      if (inDegree.get(c) === 0) next.push(c)
-    }
+// dev-task 是单任务开发单元：任务读取、依赖分层、worktree 建/合/删都由主 agent
+// （/nl-sdlc:dev-flow 编排协议）完成；本 workflow 不读任务文件、不建 worktree。
+// args = { feature, task: {id,title,deps,acceptance,test_cases,description}, worktreePath, branch, base, mainTreePath }
+//   worktreePath  任务 worktree 绝对路径（主 agent 已 git worktree add）
+//   branch        worktree 内任务分支（dev/<feature>/<task-id>）
+//   base          worktree 分叉出的基线 commit sha（评审 diff 范围 = base..HEAD）
+//   mainTreePath  主树绝对路径（供复制 .env 等未跟踪文件）
+if (!args || typeof args !== 'object' || !args.task || !args.task.id || !args.worktreePath || !args.branch || !args.base) {
+  return {
+    result: 'error',
+    error: 'dev-task 需要对象参数 {feature, task, worktreePath, branch, base, mainTreePath}；批量开发请运行 /nl-sdlc:dev-flow <feature>，由主 agent 读取 tasks.md、按依赖分层并创建 worktree 后调度本 workflow。不要把 feature 名直接传给本 workflow。',
   }
-  frontier = next
 }
-if (levels.reduce((n, l) => n + l.length, 0) < tasks.length) {
-  const seen = new Set(levels.flat())
-  const leftover = tasks.filter((t) => !seen.has(t.id)).map((t) => t.id)
-  return { result: 'error', feature: taskDoc.feature, error: '任务依赖存在环，无法拓扑排序：' + leftover.join(', ') }
-}
+const { feature, task: t, worktreePath, branch, base, mainTreePath } = args
+log(`任务 ${t.id}: ${t.title}（worktree: ${worktreePath}）`)
 
-// ---- 工具函数 ----
 const MAX_FIX_ROUNDS = 2
 
-// agent() 在 API 错误（如上下文超长 500）时会直接 reject；若不捕获，单个任务的
-// 异常会沿 parallel 冒泡、杀死整个 run。统一转为 {result:null, error}，
-// 由调用方把该任务标记为 failed 并继续，错误摘要进最终报告。
+// agent() 在 API 错误（如上下文超长 500）时会直接 reject；若不捕获，异常会杀死整个 run。
+// 统一转为 {result:null, error}，由调用方标记失败并透出错误摘要。
 async function safeAgent(prompt, opts) {
   try {
     return { result: await agent(prompt, opts), error: null }
@@ -112,101 +57,82 @@ async function safeAgent(prompt, opts) {
 // 上下文预算纪律：长构建/测试输出必须先落盘再 tail，防止转录膨胀撞爆模型上下文上限。
 const CONTEXT_BUDGET_RULE = '上下文预算纪律（必须遵守）：mvn/npm/pnpm 等构建、测试、质量门的长输出一律先重定向到文件再只取尾部（如 mvn -q test > .build.log 2>&1 && tail -n 40 .build.log），禁止把超长输出直接留在对话里，也禁止 cat 大文件（用 Read 的 offset/limit 只读相关片段）。'
 
-async function devAgent(t) {
-  const { result: dev, error } = await safeAgent(
-    `你是 dev-engineer，遵循 nl-sdlc:coding skill 实现任务。\n任务: ${JSON.stringify(t)}\nfeature: ${taskDoc.feature}\n详细设计: docs/plans/${taskDoc.feature}/详细设计.md\n\n${CONTEXT_BUDGET_RULE}\n\n完成后判断：本任务是否产生了会影响质量门（编译/静态检查/覆盖率）的代码或构建配置改动？是则 touched_code=true，否则（纯文档/说明类）false；并把改动文件列到 changed_files。`,
-    { label: 'dev-' + t.id, phase: '编码', schema: DEV_SCHEMA },
-  )
-  return { id: t.id, dev, error }
+// ---- Phase 1: 编码（worktree 内 TDD）----
+phase('编码')
+const devCall = await safeAgent(
+  [
+    '你是 dev-engineer，遵循 nl-sdlc:coding skill 实现任务。',
+    `工作目录: ${worktreePath}（git worktree，分支 ${branch}）。所有读写、构建、测试、提交都发生在这个目录内，不得改动主树（${mainTreePath || '仓库主工作树'}）里的任何文件。`,
+    '第 0 步 环境引导（缺什么补什么）：',
+    `1. cd ${worktreePath}`,
+    '2. 存在 package.json 且缺 node_modules → 运行 npm ci（无 package-lock.json 时回退 npm install，并在 summary 注明回退）',
+    mainTreePath ? `3. 主树 ${mainTreePath} 存在而本 worktree 缺失的 .env* / quality-gate.yaml / scripts/quality-gate.sh，复制进来（只复制，不改动主树）` : '',
+    `任务: ${JSON.stringify(t)}`,
+    `feature: ${feature}`,
+    `详细设计: ${worktreePath}/docs/plans/${feature}/详细设计.md`,
+    CONTEXT_BUDGET_RULE,
+    '要求：',
+    '- 若 worktree 内已有本任务的历史改动（git status / git log 可见），基于现状继续，不要推倒重来',
+    '- TDD：先写失败测试再实现；运行测试确认通过',
+    '- 完成前确保质量门要读的覆盖率产物已生成：Java 侧 mvn test jacoco:report；Vue 侧 npx vitest run --coverage',
+    `- 全部改动 git add + commit 到分支 ${branch}（提交信息: feat(${t.id}): ${t.title}）`,
+    '- 完成后判断 touched_code：本任务是否产生了会影响质量门（编译/静态检查/覆盖率）的代码或构建配置改动？是则 true，否则（纯文档/说明类）false；改动文件列入 changed_files',
+  ].filter(Boolean).join('\n'),
+  { label: 'dev-' + t.id, phase: '编码', schema: DEV_SCHEMA },
+)
+const dev = devCall.result
+if (!dev) return { result: 'error', feature, task: t.id, branch, worktreePath, devError: devCall.error || 'no-result', error: 'dev agent 未返回结果' + (devCall.error ? '：' + devCall.error : '') }
+if (dev.error) return { result: 'error', feature, task: t.id, branch, worktreePath, error: dev.error }
+if (!dev.touched_code) {
+  return {
+    result: 'no-code', feature, task: t.id, branch, worktreePath,
+    touched_code: false, changed_files: dev.changed_files || [], summary: dev.summary,
+    note: '纯文档/说明类任务，跳过质量门与评审',
+  }
 }
 
-async function gateAgent(id, round) {
+// ---- Phase 2: 质量门（worktree 内全量 + 打回修复 ≤2 轮）----
+phase('质量门')
+async function gateAgent(round) {
   const { result, error } = await safeAgent(
-    `运行 bash scripts/quality-gate.sh --scope all，把 stdout 的 JSON 报告原样返回（含 overall）。（workflow 判定一律全量 --scope all；编码期自检可用 --scope 单侧，两者不矛盾。）${CONTEXT_BUDGET_RULE}`,
-    { label: 'gate-' + id + (round ? '-r' + round : ''), phase: '质量门', schema: GATE_SCHEMA },
+    `在 ${worktreePath} 内运行 bash scripts/quality-gate.sh --scope all，把 stdout 的 JSON 报告原样返回（含 overall）。（workflow 判定一律全量 --scope all；编码期自检可用 --scope 单侧，两者不矛盾。）${CONTEXT_BUDGET_RULE}`,
+    { label: 'gate-' + t.id + (round ? '-r' + round : ''), phase: '质量门', schema: GATE_SCHEMA },
   )
   return { report: result, error }
 }
-
-async function gateWithFix(id) {
-  let g = await gateAgent(id, 0)
-  let gate = g.report
-  let gateError = g.error
-  let rounds = 0
-  while (gate && gate.overall === 'fail' && rounds < MAX_FIX_ROUNDS) {
-    await safeAgent(
-      `质量门失败，按失败详情修复任务 ${id} 的代码（遵循 nl-sdlc:coding skill，修复后运行相关测试）。失败详情: ${JSON.stringify(gate)}`,
-      { label: 'fix-' + id + '-r' + (rounds + 1), phase: '质量门' },
-    )
-    g = await gateAgent(id, rounds + 1)
-    gate = g.report
-    gateError = g.error
-    rounds++
-  }
-  return { gate, gateError, failed: !gate || gate.overall === 'fail', fixRounds: rounds }
+let g = await gateAgent(0)
+let gate = g.report
+let gateError = g.error
+let fixRounds = 0
+while (gate && gate.overall === 'fail' && fixRounds < MAX_FIX_ROUNDS) {
+  await safeAgent(
+    `质量门失败，在 ${worktreePath} 内按失败详情修复任务 ${t.id} 的代码（遵循 nl-sdlc:coding skill；修复后运行相关测试、重新生成覆盖率产物，并把改动 commit 到分支 ${branch}）。失败详情: ${JSON.stringify(gate)}${CONTEXT_BUDGET_RULE}`,
+    { label: 'fix-' + t.id + '-r' + (fixRounds + 1), phase: '质量门' },
+  )
+  g = await gateAgent(fixRounds + 1)
+  gate = g.report
+  gateError = g.error
+  fixRounds++
 }
-
-async function reviewTask(id) {
-  const t = byId.get(id)
-  const reviews = await parallel([
-    () => safeAgent(`你是 code-reviewer，遵循 nl-sdlc:code-review skill 评审任务 ${id}（${t.title}）的变更，对照其验收标准 ${JSON.stringify(t.acceptance)} 输出分级问题报告。`, { label: 'review-correctness-' + id, phase: '评审' }).then((r) => ({ perspective: 'correctness', ...r })),
-    () => safeAgent(`你是 security-auditor，对任务 ${id}（${t.title}）的变更做安全审查（OWASP Top 10），输出发现清单。（此步即 spec §6.1 质量门"AI security-auditor 代码审查"部分的执行点，与脚本门的 Dependency-Check 共同构成完整安全门。）`, { label: 'review-security-' + id, phase: '评审' }).then((r) => ({ perspective: 'security', ...r })),
-    () => safeAgent(`你是 code-reviewer，从可读性与架构视角评审任务 ${id}（${t.title}）的变更，输出分级问题报告。`, { label: 'review-architecture-' + id, phase: '评审' }).then((r) => ({ perspective: 'architecture', ...r })),
-  ])
-  return { task: id, reviews }
-}
-
-// ---- Phase 2+3: 编码 + 质量门（按依赖层级：层内 dev 并行 → 层内 gate 并行；层间 gate 完成才放行依赖层）----
-const taskResults = new Map()
-const allReviews = []
-let pendingReviews = []
-
-for (const level of levels) {
-  // 同一 parallel 里并行跑「本层全部 dev」+「上一层遗留的评审」，实现评审与下一层开发重叠
-  const devCount = level.length
-  const combined = await parallel([
-    ...level.map((id) => () => devAgent(byId.get(id))),
-    ...pendingReviews.splice(0),
-  ])
-  const devDone = combined.slice(0, devCount)
-  const reviewDone = combined.slice(devCount)
-  allReviews.push(...reviewDone.filter(Boolean))
-
-  // 归集本层 dev 结果：区分「涉代码（要过门）」/「无代码（跳过门与评审）」/「dev 失败」
-  const devById = new Map()
-  const toGate = []
-  for (let i = 0; i < level.length; i++) {
-    const id = level[i]
-    const d = devDone[i] || null
-    const dev = d ? d.dev : null
-    if (!dev) { taskResults.set(id, { task: id, dev: null, failed: true, skipped: false, devError: (d && d.error) || 'no-result' }); continue }
-    devById.set(id, dev)
-    if (!dev.touched_code) { taskResults.set(id, { task: id, dev, failed: false, skipped: true, skipReason: 'no-code' }); continue }
-    toGate.push(id)
-  }
-
-  // 本层质量门（此时层内 dev 全部完成、上一层 gate 已过，仓库处于一致状态）
-  const gateResults = await parallel(toGate.map((id) => () => gateWithFix(id)))
-  for (let i = 0; i < toGate.length; i++) {
-    const id = toGate[i]
-    const g = gateResults[i]
-    const gate = g ? g.gate : null
-    const failed = g ? g.failed : true
-    taskResults.set(id, { task: id, dev: devById.get(id), gate, failed, skipped: false, fixRounds: g ? g.fixRounds : 0, gateError: g ? g.gateError : 'no-result' })
-    if (!failed) pendingReviews.push(() => reviewTask(id))
+if (!gate || gate.overall === 'fail') {
+  return {
+    result: 'gate-failed', feature, task: t.id, branch, worktreePath,
+    touched_code: true, changed_files: dev.changed_files || [], gate, gateError, fixRounds, summary: dev.summary,
+    note: 'worktree 保留未合入；修复后以相同 args 重跑 dev-task（复用该 worktree）',
   }
 }
 
-// 最后一层无后继，遗留评审单独并行跑完
+// ---- Phase 3: 评审（三视角并行，范围 = base..HEAD 分支 diff）----
 phase('评审')
-const tail = await parallel(pendingReviews.splice(0))
-allReviews.push(...tail.filter(Boolean))
-
-const orderedResults = tasks.map((t) => taskResults.get(t.id)).filter(Boolean)
+const diffCmd = `在 ${worktreePath} 内运行 git diff ${base}..HEAD 查看全部变更`
+const reviews = await parallel([
+  () => safeAgent(`你是 code-reviewer，遵循 nl-sdlc:code-review skill。评审范围: ${diffCmd}（任务 ${t.id} ${t.title} 的全部变更），对照其验收标准 ${JSON.stringify(t.acceptance || [])} 输出分级问题报告。`, { label: 'review-correctness-' + t.id, phase: '评审' }).then((r) => ({ perspective: 'correctness', ...r })),
+  () => safeAgent(`你是 security-auditor。评审范围: ${diffCmd}（任务 ${t.id} ${t.title} 的全部变更），做安全审查（OWASP Top 10），输出发现清单。（此步即 spec §6.1 质量门"AI security-auditor 代码审查"部分的执行点，与脚本门的 Dependency-Check 共同构成完整安全门。）`, { label: 'review-security-' + t.id, phase: '评审' }).then((r) => ({ perspective: 'security', ...r })),
+  () => safeAgent(`你是 code-reviewer。评审范围: ${diffCmd}（任务 ${t.id} ${t.title} 的全部变更），从可读性与架构视角输出分级问题报告。`, { label: 'review-architecture-' + t.id, phase: '评审' }).then((r) => ({ perspective: 'architecture', ...r })),
+])
 return {
-  result: 'done',
-  feature: taskDoc.feature,
-  taskResults: orderedResults,
-  reviews: allReviews,
-  note: 'Critical 问题需打回；合并前需人工批准（见 nl-sdlc:delivery skill）',
+  result: 'done', feature, task: t.id, branch, worktreePath,
+  touched_code: true, changed_files: dev.changed_files || [], gate, fixRounds, summary: dev.summary,
+  reviews: reviews.filter(Boolean),
+  note: '主 agent 可把分支 ' + branch + ' 合入主树当前分支；Critical 评审问题需打回修复；交付合并前需人工批准（见 nl-sdlc:delivery skill）',
 }

@@ -19,13 +19,14 @@ Windows 使用 in-process 模式。团队协作失败时回退：直接运行 `/
 
 ## 使用
 
-`-flow` 结尾的是确定性工作流；其余是交互式命令（启用 agent-teams 时并行协作）。
+`-flow` 结尾的是自动化流程命令：requirement-flow / test-flow 是确定性 workflow；dev-flow 由主 agent 编排、worktree 隔离并行调度 dev-task 单任务 workflow。其余是交互式命令（启用 agent-teams 时并行协作）。
 
 | 命令 | 作用 |
 |---|---|
 | `/nl-sdlc:design` | 架构设计入口：显式调用架构设计智能体 → 智能体跑 `/nl-sdlc:requirement-flow` |
 | `/nl-sdlc:requirement-flow` | 需求分析 → 概要设计（3票质疑，2/3 通过）→ 详细设计 + tasks.md |
-| `/nl-sdlc:dev-flow` | 按 tasks.md 编码 → 质量门打回循环 → 三视角评审 |
+| `/nl-sdlc:dev-flow` | 批量开发编排：主 agent 读 tasks.md 按依赖分层 → worktree 隔离并行跑 dev-task → 逐层合回 + 收尾全量门 |
+| `/nl-sdlc:dev-task` | 单任务开发单元（worktree 内 编码→质量门→评审），由 dev-flow 编排调度 |
 | `/nl-sdlc:test-flow` | Newman 接口测试 + Playwright E2E，失败诊断与修复 |
 | `/nl-sdlc:code` | 交互式编码：TDD + 质量门（teams 时 dev 队友并行） |
 | `/nl-sdlc:review` | 交互式评审：五轴评审（teams 时三视角并行互搏） |

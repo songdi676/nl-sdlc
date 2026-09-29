@@ -5,7 +5,7 @@ AI Agent 驱动的 SDLC 全流程自动化插件：需求 → 编码 → 评审 
 
 适用技术栈：Java（Maven）+ Vue 3（Vite + TypeScript）。
 
-**术语速览**：`-flow` 结尾的是 workflow（确定性的自动化流程，由插件自动注册为命令）：`/nl-sdlc:requirement-flow`、`/nl-sdlc:dev-flow`、`/nl-sdlc:test-flow`；其余是交互式薄壳命令，背后是 skill（指导 agent 工作的规范）与 agent（角色智能体）：`/nl-sdlc:design`（架构设计入口，显式调用架构设计智能体 → 智能体跑 requirement-flow）、`/nl-sdlc:code`、`/nl-sdlc:review`、`/nl-sdlc:test`、`/nl-sdlc:ship`；agent-teams 是实验性的多会话并行协作（code/review/test 启用后自动使用）。
+**术语速览**：`-flow` 结尾的是自动化流程命令：`/nl-sdlc:requirement-flow`、`/nl-sdlc:test-flow` 是确定性 workflow；`/nl-sdlc:dev-flow` 由主 agent 编排、按依赖分层并行调度 `dev-task` 单任务 workflow（worktree 隔离）；其余是交互式薄壳命令，背后是 skill（指导 agent 工作的规范）与 agent（角色智能体）：`/nl-sdlc:design`（架构设计入口，显式调用架构设计智能体 → 智能体跑 requirement-flow）、`/nl-sdlc:code`、`/nl-sdlc:review`、`/nl-sdlc:test`、`/nl-sdlc:ship`；agent-teams 是实验性的多会话并行协作（code/review/test 启用后自动使用）。
 
 ---
 
@@ -20,7 +20,7 @@ claude plugin marketplace add ./.claude-plugin/marketplace.json
 claude plugin install nl-sdlc@nl-sdlc-marketplace
 ```
 
-安装后可用命令：`/nl-sdlc:design`、`/nl-sdlc:requirement-flow`、`/nl-sdlc:dev-flow`、`/nl-sdlc:test-flow`、`/nl-sdlc:code`、`/nl-sdlc:review`、`/nl-sdlc:test`、`/nl-sdlc:ship`。
+安装后可用命令：`/nl-sdlc:design`、`/nl-sdlc:requirement-flow`、`/nl-sdlc:dev-flow`、`/nl-sdlc:dev-task`、`/nl-sdlc:test-flow`、`/nl-sdlc:code`、`/nl-sdlc:review`、`/nl-sdlc:test`、`/nl-sdlc:ship`。
 
 ### 1.1.1 升级插件（已安装旧版时）
 
@@ -42,7 +42,7 @@ claude plugin update nl-sdlc@nl-sdlc-marketplace   # 若 update 不可用，重�
 ```
 
 - Windows 使用 in-process 模式即可（分屏模式不支持）。
-- agent-teams 为实验性功能：协作中途失败时，直接运行 `/nl-sdlc:dev-flow` 以 workflow 模式重跑，两条路径产物互通。
+- agent-teams 为实验性功能：协作中途失败时，直接运行 `/nl-sdlc:dev-flow <feature>` 以编排模式重跑（已合回的任务自动跳过，见 4.1），两条路径产物互通。
 
 ### 1.3 资产落地（必做）
 
@@ -52,6 +52,7 @@ claude plugin update nl-sdlc@nl-sdlc-marketplace   # 若 update 不可用，重�
 |---|---|
 | `scripts/quality-gate.sh` → 项目根 `scripts/` | 质量门脚本（本手册所有 `bash scripts/...` 命令的前提） |
 | `scripts/run-tests.sh` → 项目根 `scripts/` | 测试执行脚本 |
+| `scripts/topo-levels.mjs` → 项目根 `scripts/` | 任务依赖拓扑分层（`/nl-sdlc:dev-flow` 编排的输入） |
 | `templates/config/quality-gate.yaml` → 项目根 | 阈值配置（自动生效，见 4.3） |
 | `templates/ci/` 按 CI 系统选一个 | 需改名/移位：GitLab → 项目根 `.gitlab-ci.yml`；Jenkins → 项目根 `Jenkinsfile`；GHA → `.github/workflows/` |
 | `templates/docker/` | Dockerfile 模板（见 7.2，**目录结构原位保留**，不拍平） |
@@ -75,7 +76,7 @@ claude plugin update nl-sdlc@nl-sdlc-marketplace   # 若 update 不可用，重�
 
 1. **准备**：完成第 1 章安装与资产落地；把需求写入 `docs/requirements/用户登录.md`（目录必须存在且非空，否则 workflow 直接终止）。
 2. **需求**：运行 `/nl-sdlc:design`（显式调用架构设计智能体，智能体会跑需求流程；也可直接 `/nl-sdlc:requirement-flow 分析 docs/requirements/ 下文档`）→ 产出概要设计（3票质疑通过）、详细设计、`docs/plans/用户登录/tasks.md`。注意 feature 名由分析 agent 生成，后续命令要引用它（见 3）。
-3. **开发**：`/nl-sdlc:dev-flow 用户登录`（workflow 模式）或交互式编码；质量门不过自动打回修复。
+3. **开发**：`/nl-sdlc:dev-flow 用户登录`（编排模式：worktree 隔离并行，见 4.1）或交互式编码；质量门不过自动打回修复。
 4. **评审**：`/nl-sdlc:review`；人工在 MR 上批准。
 5. **测试**：编写 `tests/api/*.postman_collection.json` 与 `tests/e2e/*.spec.ts`（用例编写见 6.1），运行 `/nl-sdlc:test --base-url <测试环境地址>`（交互式，teams 并行；也可 `/nl-sdlc:test-flow --base-url <地址>` 走确定性流程）。
 6. **交付**：`/nl-sdlc:ship` 做最终质量门与测试 → CI 绿灯 → 人工批准合并。
@@ -125,13 +126,20 @@ claude plugin update nl-sdlc@nl-sdlc-marketplace   # 若 update 不可用，重�
 
 ## 4. 开发阶段
 
-### 4.1 workflow 模式：`/nl-sdlc:dev-flow`
+### 4.1 编排模式：`/nl-sdlc:dev-flow`
 
 ```bash
 /nl-sdlc:dev-flow 用户登录
 ```
 
-workflow 读取命令后的 feature 名，按 tasks.md 的 `deps` 依赖关系并行开发：无依赖的任务并行编码；每个任务编码完成后**立即**跑质量门（checkstyle → spotbugs → 覆盖率 → 安全扫描）→ 不过则打回修复（最多 2 轮）→ 过门即触发三视角评审（与下一层任务的开发并行）。不涉及代码的任务（纯文档/说明类）跳过质量门与评审。依赖任务需等前置任务的「编码+质量门」都完成才开工。
+由主 agent 编排（不再是单个长 workflow）：
+
+1. 读 `docs/plans/<feature>/tasks.md`，跑 `node scripts/topo-levels.mjs` 按 `deps` 拓扑分层（依赖缺失/成环直接报错停下）。
+2. **逐层开发，worktree 隔离**：每个任务一个 `.claude/worktrees/<feature>-<task-id>`（分支 `dev/<feature>/<task-id>`），同层任务并行跑 `dev-task` 单任务 workflow——内部依次 TDD 编码 → 质量门（worktree 内全量 `--scope all`，不过打回修复最多 2 轮）→ 三视角评审（评审范围 = 该任务分支 diff）。worktree 内自动补依赖（有 `package.json` 跑 `npm ci`；Maven 走全局 `~/.m2` 无需安装）并复制 `.env` 等未跟踪文件。
+3. 每个任务过门后由主 agent 合回当前分支并删除 worktree；依赖任务等前置合回后从新 tip 建 worktree。门未过的任务保留 worktree，可按报告中的 args 重跑。
+4. 全部完成后主树重新生成覆盖率产物并跑一次收尾全量门，汇总各任务评审清单（Critical 置顶）。
+
+纯文档/说明类任务（不产生代码改动）自动跳过质量门与评审。合入的是当前分支（与旧版直接提交到当前分支的行为一致）；交付合并前仍需人工批准（见第 5 节）。
 
 ### 4.2 交互式模式：`/nl-sdlc:code`
 
@@ -285,7 +293,8 @@ bash scripts/run-tests.sh --api --e2e --base-url http://localhost:8080
 | E2E 失败但用例写对了 | 检查 `playwright.config.ts` 的 baseURL 是否读 `process.env.PLAYWRIGHT_BASE_URL`——否则 `--base-url` 不生效 |
 | 本地测试绿、CI 红 | 本地无用例文件时跳过不失败、CI 无匹配文件会失败（见 7.1）；确保用例已提交 |
 | 改了 quality-gate.yaml 不生效 | 确认文件在项目根；CI 侧阈值在 pom.xml jacoco rules / vitest 配置中，两处同步 |
-| agent-teams 队友卡住/失败 | 直接运行 `/nl-sdlc:dev-flow` 以 workflow 模式重跑（实验性功能的兜底路径） |
+| agent-teams 队友卡住/失败 | 直接运行 `/nl-sdlc:dev-flow <feature>` 重跑（已合回任务自动跳过，见 4.1；实验性功能的兜底路径） |
+| dev-task 门未过想重跑 | 以报告中附的相同 args 再调一次 dev-task（复用保留的 worktree，基于现状继续） |
 | 3票质疑一直不通过 | 查看会话中输出的分歧报告，按质疑修订需求/设计后重新运行 |
 | `/nl-sdlc:dev-flow 找不到任务` | feature 名与需求阶段产物目录名不一致——以 `docs/plans/` 下实际目录名为准 |
 | 覆盖率不达标 | 补齐单元测试；阈值调整改 `quality-gate.yaml`（CI 侧同步） |
